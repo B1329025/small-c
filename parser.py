@@ -96,8 +96,6 @@ class Parser:
                 'type': 'array',
                 'initialized': False
             })
-            for _ in range(size):
-                memory.storage.append(0)
             return None
         else:
             addr = memory.allocate_memory(1)
@@ -108,7 +106,6 @@ class Parser:
                 'type': 'int_ptr' if is_pointer else 'int',
                 'initialized': False
             })
-            memory.storage.append(0)
             if self.current_token() and self.current_token().type=='assign':
                 self.eat('assign')
                 value_node=self.logical_or()
