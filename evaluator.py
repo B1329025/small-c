@@ -14,18 +14,18 @@ class Evaluator:
                     raise RuntimeError(f"變數 '{node.name}' 未初始化")
                 if info.get('type') == 'array':
                     return info['address']
-                return memory.storage[info['address']]
+                return memory.read(info['address'])
             if isinstance(node ,AssignNode):
                 val = self.evaluate(node.expression_node, scope)
                 info = scope.lookup(node.var_name)
                 info['initialized'] = True
                 address = info['address']
-                memory.storage[address] = val
+                memory.write(info['address'], val)
                 return val
             if isinstance(node ,UnaryOpNode):
                 if node.op =='DEREF':
                     address = self.evaluate(node.operand, scope)
-                    return memory.storage[address]
+                    return memory.read(address)
                 elif node.op =='ADDRESS_OF':
                     info =scope.lookup(node.operand.name)
                     return info['address']
@@ -54,7 +54,7 @@ class Evaluator:
                 index=self.evaluate(node.index_node, scope)
                 if index<0 or index>=size:
                     raise RuntimeError(f"索引越界！陣列 {node.name} 長度為 {size}，但存取了索引 {index}")
-                return memory.storage[base_addr + index]
+                return memory.read(base_addr + index)
             if isinstance(node,ArrayAssignNode):
                 info = scope.lookup(node.name)
                 address = info['address']
@@ -63,7 +63,7 @@ class Evaluator:
                 if index<0 or index>=size:
                     raise RuntimeError(f"索引越界！陣列 {node.name} 長度為 {size}，但存取了索引 {index}")
                 val=self.evaluate(node.value_node, scope)
-                memory.storage[address + index]=val
+                memory.write(address + index, val)
                 return val
             if isinstance(node,DerefAssignNode):
                 target_address = self.evaluate(node.target_node, scope)
