@@ -16,18 +16,28 @@ class Evaluator:
                     return info['address']
                 return memory.read(info['address'])
             if isinstance(node ,AssignNode):
+                # 取得右值。注意：如果是 StringNode，回傳的是記憶體位址（int）
                 val = self.evaluate(node.expression_node, scope)
                 info = scope.lookup(node.var_name)
                 if info is None:
                     raise NameError(f"變數 '{node.var_name}' 尚未宣告過！")
-                var_type = info.get('type')
-                if var_type == 'int':
-                    val = int(val)
-                elif var_type == 'char':
-                        val = int(val) % 256
+                
+                # 判斷是否為陣列字串初始化：檢查節點類型，而非 evaluate 後的結果
+                if info.get('type') == 'array' and isinstance(node.expression_node, StringNode):
+                    base_addr = info['address']
+                    raw_str = node.expression_node.value # 取得原始字串內容
+                    for i, char in enumerate(raw_str):
+                        if i < info['size']:
+                            memory.write(base_addr + i, ord(char))
+                    if len(raw_str) < info['size']:
+                        memory.write(base_addr + len(raw_str), 0)
+                else:
+                    # 一般變數或指標賦值，直接寫入記憶體
+                    if info.get('type') != 'array':
+                        memory.write(info['address'], val)
+                
+                # 關鍵修正：確保所有賦值都會標記為已初始化
                 info['initialized'] = True
-                address = info['address']
-                memory.write(info['address'], val)
                 return val
             if isinstance(node ,UnaryOpNode):
                 if node.op =='DEREF':
@@ -80,21 +90,73 @@ class Evaluator:
                 memory.storage[target_address] = value
                 return value
             if isinstance(node, PrintNode):
-                # 1. 取得數值 (如果是 c，會得到 65)
-                val = self.evaluate(node.expression_node, scope)
-                if isinstance(node.expression_node, VarNode):
-                    info = scope.lookup(node.expression_node.name)
-                    var_type = info.get('type')
-                    
-                    if var_type == 'int':
-                        print(val, end='', flush=True) # 印出數字 3
+                # 1. 先計算所有參數的值
+                arg_values = [self.evaluate(arg, scope) for arg in node.args]
+                
+                fmt = node.format_string
+                result = ""
+                arg_idx = 0
+                i = 0
+                
+                while i < len(fmt):
+                    if fmt[i] == '%' and i + 1 < len(fmt):
+                        specifier = fmt[i+1]
+                        if specifier == '%': # 輸出百分比符號本身
+                            result += "%"
+                            i += 2
+                            continue
+                        
+                        # 取出當前參數值
+                        if arg_idx >= len(arg_values):
+                            raise RuntimeError("printf 格式字串與參數數量不符")
+                        val = arg_values[arg_idx]
+                        arg_idx += 1
+                        
+                        if specifier == 'd': # 整數
+                            result += str(int(val))
+                        elif specifier == 'c': # 字元
+                            result += chr(int(val))
+                        elif specifier == 'x': # 十六進位
+                            result += hex(int(val))[2:]
+                        elif specifier == 's': # 字串 (假設 val 是記憶體位址)
+                            addr = val
+                            s_val = ""
+                            while True:
+                                char_code = memory.read(addr)
+                                if char_code == 0: break
+                                s_val += chr(char_code)
+                                addr += 1
+                            result += s_val
+                        i += 2 # 跳過 % 和佔位符
                     else:
-                        print(chr(val), end='', flush=True) # 印出字元 'A'
-                else:
-                    if isinstance(node.expression_node, NumberNode):
-                        raise TypeError("printf 預期收到變數或字串，而非直接的整數常數")
-                    
+                        result += fmt[i]
+                        i += 1
+                        
+                print(result, end='', flush=True)
                 return None
+            if isinstance(node, ArrayDeclarationNode):
+                # 1. 向 memory.py 請求分配連續空間
+                base_address = memory.allocate_memory(node.size)
+                
+                # 2. 如果有初始化字串 (hello)
+                if node.init_node and isinstance(node.init_node, StringNode):
+                    content = node.init_node.value
+                    # 逐字寫入 ASCII 碼
+                    for i in range(min(len(content), node.size)):
+                        memory.write(base_address + i, ord(content[i]))
+                    # 補上 C 語言字串結尾符號 \0 (如果還有空間)
+                    if len(content) < node.size:
+                        memory.write(base_address + len(content), 0)
+                        
+                # 3. 註冊到符號表
+                scope.define(node.var_name, {
+                    'type': 'array',
+                    'element_type': node.var_type,
+                    'address': base_address,
+                    'size': node.size,
+                    'initialized': True
+                })
+                return base_address
             if isinstance(node, StringNode):
                 # 1. 在記憶體中分配空間 (字串長度 + 1 個 '\0' 結束符)
                 base_address = memory.allocate_memory(len(node.value) + 1)
