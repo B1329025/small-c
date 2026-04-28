@@ -53,8 +53,15 @@ class DerefAssignNode:
         self.target_node=target_node
         self.value_node=value_node
 class PrintNode:
-    def __init__(self, expression_node):
-        self.expression_node = expression_node
+    def __init__(self, format_string, args):
+        self.format_string = format_string  # 例如 "%d %c"
+        self.args = args    # 表達式節點列表 [VarNode('a'), VarNode('b')]
 class StringNode:
     def __init__(self, value):
         self.value = value
+class ArrayDeclarationNode:
+    def __init__(self, var_type, var_name, size, init_node=None):
+        self.var_type = var_type  # 'char' 或 'int'
+        self.var_name = var_name
+        self.size = size          # 陣列長度
+        self.init_node = init_node # 初始化的內容 (例如 StringNode)
