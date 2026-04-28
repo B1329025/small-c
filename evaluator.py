@@ -82,18 +82,18 @@ class Evaluator:
             if isinstance(node, PrintNode):
                 # 1. 取得數值 (如果是 c，會得到 65)
                 val = self.evaluate(node.expression_node, scope)
-                if isinstance(node.expression_node, StringNode):
-                    addr = val
-                    result = ""
-                    while True:
-                        char_code = memory.read(addr)
-                        if char_code == 0: break # 遇到 \0 停止
-                        result += chr(char_code)
-                        addr += 1
-                    print(result, end='', flush=True)
+                if isinstance(node.expression_node, VarNode):
+                    info = scope.lookup(node.expression_node.name)
+                    var_type = info.get('type')
+                    
+                    if var_type == 'int':
+                        print(val, end='', flush=True) # 印出數字 3
+                    else:
+                        print(chr(val), end='', flush=True) # 印出字元 'A'
                 else:
-                    # 原本的單一字元處理
-                    print(chr(val), end='', flush=True)
+                    if isinstance(node.expression_node, NumberNode):
+                        raise TypeError("printf 預期收到變數或字串，而非直接的整數常數")
+                    
                 return None
             if isinstance(node, StringNode):
                 # 1. 在記憶體中分配空間 (字串長度 + 1 個 '\0' 結束符)
