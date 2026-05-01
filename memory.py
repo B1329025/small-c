@@ -1,11 +1,8 @@
-# memory.py
 
-# --- 全域儲存空間 ---
 macros = {}              # 存放 #define 等巨集
 storage = []             # 實際模擬物理記憶體的陣列 (RAM)
 next_free_address = 0    # 下一個可分配的起始位址
 
-# --- 符號表類別 (Symbol Table) ---
 class SymbolTable:
     def __init__(self, parent=None):
         self.symbols = {}     # 存放當前層的變數資訊 (位址、型別、狀態)
@@ -38,8 +35,6 @@ def allocate_memory(size=1):
     global next_free_address
     addr = next_free_address
     
-    # 自動擴充物理空間，預設填入 0 (模擬初始化)
-    # 這樣 Parser 或 Evaluator 就不用自己手動 append 了
     for _ in range(size):
         storage.append(0)
         
