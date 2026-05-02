@@ -158,7 +158,7 @@ class Parser:
         self.eat('FOR')
         self.eat('LPAREN')
         
-        # 這裡不要切換作用域，直接解析節點
+        # 這裡不要建立 SymbolTable，直接解析節點
         if self.current_token().type in ('INT', 'CHAR'):
             init = self.declare_variable()
         else:
@@ -170,7 +170,9 @@ class Parser:
         update = self.assign_value()
         self.eat('RPAREN')
         
-        body = self.parse_statement() 
+        # 直接解析主體
+        body = self.parse_statement()
+        
         return ForNode(init, condition, update, body)
     def logical_or(self):
         node = self.logical_and()

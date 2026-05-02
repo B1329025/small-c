@@ -119,9 +119,9 @@ class Evaluator:
                 return None      
             if isinstance(node, BlockNode):
                 result = None
-                target_scope = getattr(node, 'scope', scope)
+                local_runtime_scope = memory.SymbolTable(parent=scope)
                 for stmt in node.statements:
-                    result = self.evaluate(stmt, target_scope)
+                    result = self.evaluate(stmt, local_runtime_scope)
                 return result
             if isinstance(node, WhileNode):
                 result=None
@@ -246,26 +246,30 @@ class Evaluator:
                 memory.write(base_address + len(node.value), 0) # 寫入結束符 \0
                 return base_address # 回傳字串的首位址
             if isinstance(node, ForNode):
-                # 1. 建立 for 專用的作用域，繼承自當前的 scope
-                for_scope = memory.SymbolTable(parent=scope) #[cite: 28, 31]
+                # 1. 建立執行期的獨立作用域 (parent 指向當前的 scope)
+                for_runtime_scope = memory.SymbolTable(parent=scope)
                 
-                # 2. 執行初始化 (在此作用域宣告 int i = 0)
+                # 2. 執行初始化 (關鍵：傳入 for_runtime_scope)
+                # 如果 node.init 是 int i = 0，i 就會被定義在 for_runtime_scope 裡
                 if node.init:
-                    self.evaluate(node.init, for_scope)
+                    self.evaluate(node.init, for_runtime_scope)
                 
                 last_result = None
                 while True:
-                    # 3. 檢查條件
+                    # 3. 檢查條件 (也必須在 for_runtime_scope 裡找 i)
                     if node.condition:
-                        if not self.evaluate(node.condition, for_scope):
+                        condition_val = self.evaluate(node.condition, for_runtime_scope)
+                        if not condition_val:
                             break
                     
-                    # 4. 執行主體 (傳入 for_scope，這樣 body 才能找到 i)
-                    last_result = self.evaluate(node.body, for_scope)
+                    # 4. 執行主體
+                    # 注意：如果 body 是 BlockNode ({...})，它會建立自己的子作用域，
+                    # 其 parent 會指向我們這裡的 for_runtime_scope，所以能找到 i。
+                    last_result = self.evaluate(node.body, for_runtime_scope)
                     
-                    # 5. 執行更新
+                    # 5. 更新表達式 (i = i + 1)
                     if node.update:
-                        self.evaluate(node.update, for_scope)
+                        self.evaluate(node.update, for_runtime_scope)
                         
                 return last_result
             if isinstance(node, BinOpNode):
