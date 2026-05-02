@@ -119,7 +119,7 @@ class Parser:
         assign_ops =['assign','PA','MA','TA','DA','MOD_A']
         if self.current_token() and self.current_token().type in assign_ops:
             op_token =self.eat(self.current_token().type)
-            right_node =self.assign_value()        
+            right_node =self.logical_or()        
             return AssignNode(left_node,op_token.type,right_node)    
         return left_node
     def parse_printf(self):
