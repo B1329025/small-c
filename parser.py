@@ -157,16 +157,26 @@ class Parser:
     def FOR(self):
         self.eat('FOR')
         self.eat('LPAREN')
+        
+        # 建立 for 專用的臨時作用域，讓 init 宣告的變數存放在這
+        for_scope = memory.SymbolTable(parent=self.current_scope)
+        previous_scope = self.current_scope
+        self.current_scope = for_scope # 切換到 for 作用域
+        
         if self.current_token().type in ('INT', 'CHAR'):
             init = self.declare_variable()
         else:
             init = self.assign_value()
         self.eat('END')
-        condition =self.logical_or()
+        
+        condition = self.logical_or()
         self.eat('END')
         update = self.assign_value()
         self.eat('RPAREN')
-        body = self.parse_statement()
+        
+        body = self.parse_statement() # 此時解析 body，其 parent 會正確指向 for_scope
+        
+        self.current_scope = previous_scope # 恢復作用域
         return ForNode(init, condition, update, body)
     def logical_or(self):
         node = self.logical_and()
