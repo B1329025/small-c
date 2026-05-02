@@ -31,7 +31,6 @@ class Evaluator:
                     rhs_val = self.evaluate(node.right, scope)
                     if node.op != 'assign':
                         old_val = memory.read(target_addr)
-                        # ... 執行運算邏輯 ...
                         rhs_val = self.calculate_compound(old_val, rhs_val, node.op)
                     memory.write(target_addr, rhs_val)
                     return rhs_val
