@@ -246,25 +246,27 @@ class Evaluator:
                 memory.write(base_address + len(node.value), 0) # 寫入結束符 \0
                 return base_address # 回傳字串的首位址
             if isinstance(node, ForNode):
-                # 建立一個新的作用域，parent 指向當前範圍
-                # 這確保了 for(int i=0;...) 的 i 只活在裡面
-                for_scope = memory.SymbolTable(parent=scope)
-                # 1. 執行初始化 (例如 int i = 0)
+                # 1. 建立 for 專用的作用域，繼承自當前的 scope
+                for_scope = memory.SymbolTable(parent=scope) #[cite: 28, 31]
+                
+                # 2. 執行初始化 (在此作用域宣告 int i = 0)
                 if node.init:
                     self.evaluate(node.init, for_scope)
+                
                 last_result = None
-                # 2. 條件判斷 (例如 i < 10)
-                # 如果 condition 為 None (如 for(i=0;;i++))，在 C 語言中視為真 (1)
                 while True:
+                    # 3. 檢查條件
                     if node.condition:
-                        condition_val = self.evaluate(node.condition, for_scope)
-                        if not condition_val: # 如果條件為假 (0)，跳出迴圈
+                        if not self.evaluate(node.condition, for_scope):
                             break
-                    # 3. 執行迴圈主體 (Body)
-                    last_result = self.evaluate(node.body, for_scope)   
-                    # 4. 執行更新表達式 (例如 i = i + 1)
+                    
+                    # 4. 執行主體 (傳入 for_scope，這樣 body 才能找到 i)
+                    last_result = self.evaluate(node.body, for_scope)
+                    
+                    # 5. 執行更新
                     if node.update:
                         self.evaluate(node.update, for_scope)
+                        
                 return last_result
             if isinstance(node, BinOpNode):
                 # --- 邏輯運算：特殊處理（短路） ---
