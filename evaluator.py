@@ -192,7 +192,7 @@ class Evaluator:
                     'address': addr,
                     'size': 1,
                     'type': node.var_type,
-                    'initialized': True if node.init_node else False
+                    'initialized': True 
                 })
                 return val
             if isinstance(node, StringNode):
