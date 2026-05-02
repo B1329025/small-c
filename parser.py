@@ -26,7 +26,9 @@ class Parser:
             return None
 
         if token.type in ('INT', 'CHAR'):
-            return self.declare_variable()
+            node =self.declare_variable()
+            self.eat('END')
+            return node 
         
         if token.type == 'PRINTF':
             return self.parse_printf()
@@ -48,7 +50,9 @@ class Parser:
             return block_node
 
         if token.type in ('ID', 'TIMES'):
-            return self.assign_value()
+            node = self.assign_value()
+            self.eat('END')
+            return node
 
         if token.type == 'IF':
             return self.If()
@@ -59,7 +63,8 @@ class Parser:
         if token.type == 'END':
             self.eat('END')
             return None
-
+        if token.type =='FOR':
+            return self.FOR()
         raise SyntaxError(f"無法解析的語句開頭: {token.type}")
 
     def declare_variable(self):
@@ -85,7 +90,6 @@ class Parser:
                 self.eat('assign')
                 init_node = self.logical_or()
             
-            self.eat('END')
             # 僅回傳節點，不執行 define。注意：此處 size 傳入 size_node 給 Evaluator 計算
             return ArrayDeclarationNode(var_base_type, var_name, size_node, init_node)
         
@@ -96,7 +100,6 @@ class Parser:
                 self.eat('assign')
                 init_node = self.logical_or()
             
-            self.eat('END')
             # 建立一個通用的宣告節點 (需在 nodes.py 定義或直接用一個標示位址的節點)
             return VarDeclarationNode(final_type_name, var_name, init_node)
         
@@ -106,7 +109,6 @@ class Parser:
             target_node = self.logical_or()
             self.eat('assign')
             value_node = self.logical_or()
-            self.eat('END')
             return DerefAssignNode(target_node, value_node)
 
         var_name = self.eat('ID').value
@@ -116,12 +118,10 @@ class Parser:
             self.eat('RBRACKET')
             self.eat('assign')
             value_node = self.logical_or()
-            self.eat('END')
             return ArrayAssignNode(var_name, index_node, value_node)
         
         self.eat('assign')
         value_node = self.logical_or()
-        self.eat('END')
         return AssignNode(var_name, value_node)
 
     def parse_printf(self):
@@ -156,7 +156,20 @@ class Parser:
         self.eat('RPAREN')
         then_block = self.parse_statement()
         return WhileNode(condition, then_block)
-
+    def FOR(self):
+        self.eat('FOR')
+        self.eat('LPAREN')
+        if self.current_token().type in ('INT', 'CHAR'):
+            init = self.declare_variable()
+        else:
+            init = self.assign_value()
+        self.eat('END')
+        condition =self.logical_or()
+        self.eat('END')
+        update = self.assign_value()
+        self.eat('RPAREN')
+        body = self.parse_statement()
+        return ForNode(init, condition, update, body)
     def logical_or(self):
         node = self.logical_and()
         while self.current_token() and self.current_token().type == 'LOGICAL_OR':
@@ -181,7 +194,7 @@ class Parser:
         return node
     def bit_xor(self):
         node=self.bit_and()
-        while self.current_token() and self.current_token().type =='BIT_XOR':
+        while self.current_token() and self.current_token().type =='XOR':
             op=self.eat(self.current_token().type).type
             right_node=self.bit_and()
             node=BinOpNode(node,op,right_node)

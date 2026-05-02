@@ -71,3 +71,9 @@ class VarDeclarationNode:
         self.var_type = var_type
         self.var_name = var_name
         self.init_node = init_node
+class ForNode:
+    def __init__(self, init, condition, update, body):
+        self.init = init        # 例如: i = 0
+        self.condition = condition  # 例如: i < 10
+        self.update = update      # 例如: i = i + 1
+        self.body = body        # 迴圈主體

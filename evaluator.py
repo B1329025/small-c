@@ -19,27 +19,24 @@ class Evaluator:
                 # 1. 取得右值的值 (如果是 StringNode，val 會是記憶體位址)
                 val = self.evaluate(node.expression_node, scope)
                 info = scope.lookup(node.var_name)
-                
                 if info is None:
                     raise NameError(f"變數 '{node.var_name}' 尚未宣告過！")
 
-                # 2. 修正判斷：直接檢查節點類型 (node.expression_node) 而非 val 的型別
                 if info.get('type') == 'array' and isinstance(node.expression_node, StringNode):
                     base_addr = info['address']
-                    # 從 StringNode 節點直接拿原始字串內容
-                    raw_str = node.expression_node.value 
-                    for i, char in enumerate(raw_str):
-                        if i < info['size']:
-                            memory.write(base_addr + i, ord(char))
-                    # 補上 C 語言字串結尾符 \0
-                    if len(raw_str) < info['size']:
-                        memory.write(base_addr + len(raw_str), 0)
+                    raw_str = node.expression_node.value
+                    max_size = info['size']
+                    # 越界檢查：必須留一格給 \0
+                    if len(raw_str) >= max_size:
+                        raise IndexError(f"Runtime error: string too long for array '{node.var_name}' (size {max_size})")
+                    for i in range(len(raw_str)):
+                        memory.write(base_addr + i, ord(raw_str[i]))
+                    # 確保有寫入 \0，這樣 printf("%s") 才會正常
+                    memory.write(base_addr + len(raw_str), 0)
                 else:
-                    # 一般變數賦值，寫入記憶體
+                    # 一般變數或指標賦值
                     if info.get('type') != 'array':
                         memory.write(info['address'], val)
-                
-                # 3. 關鍵修正：將初始化標籤設為 True
                 info['initialized'] = True
                 return val
             if isinstance(node ,UnaryOpNode):
@@ -96,9 +93,7 @@ class Evaluator:
             if isinstance(node,DerefAssignNode):
                 target_address = self.evaluate(node.target_node, scope)
                 value = self.evaluate(node.value_node, scope)
-                if target_address < 0 or target_address >= len(memory.storage):
-                    raise RuntimeError(f"區段錯誤 (Segmentation fault): 位址 {target_address}")
-                memory.storage[target_address] = value
+                memory.write(target_address, value)
                 return value
             if isinstance(node, PrintNode):
                 # 1. 先計算所有參數的值
@@ -133,11 +128,24 @@ class Evaluator:
                         elif specifier == 's': # 字串 (假設 val 是記憶體位址)
                             addr = val
                             s_val = ""
-                            while True:
-                                char_code = memory.read(addr)
-                                if char_code == 0: break
-                                s_val += chr(char_code)
-                                addr += 1
+                            # 模擬讀取直到遇到 \0
+                            try:
+                                while True:
+                                    # 讀取位址內容
+                                    char_code = memory.read(addr) 
+                                    
+                                    # 遇到結尾符 \0 則停止
+                                    if char_code == 0: 
+                                        break
+                                    
+                                    s_val += chr(char_code)
+                                    addr += 1
+                                    
+                                    # 安全機制：防止無限迴圈（可選）
+                                    if len(s_val) > 1000: 
+                                        break
+                            except Exception:
+                                raise RuntimeError(f"Runtime error: 讀取字串時記憶體存取越界 (位址: {addr})")
                             result += s_val
                         i += 2 # 跳過 % 和佔位符
                     else:
@@ -152,7 +160,17 @@ class Evaluator:
                 size = self.evaluate(node.size_node, scope)
                 # 2. 分配記憶體
                 base_address = memory.allocate_memory(size)
-                # 3. 定義到符號表 (這一步移到這裡)
+                if node.init_node and isinstance(node.init_node, StringNode):
+                    content = node.init_node.value
+                    # 檢查空間是否足夠存放字串 + \0
+                    if len(content) >= size:
+                        raise IndexError(f"Runtime error: array size {size} is too small for string '{content}' with null terminator.")
+                    # 寫入字元
+                    for i in range(len(content)):
+                        memory.write(base_address + i, ord(content[i]))  
+                    # 強制補上結尾符 \0[cite: 17]
+                    memory.write(base_address + len(content), 0)
+
                 scope.define(node.var_name, {
                     'type': 'array',
                     'element_type': node.var_type,
@@ -160,17 +178,6 @@ class Evaluator:
                     'size': size,
                     'initialized': True if node.init_node else False
                 })
-                # 4. 處理初始化
-                if node.init_node:
-                    if isinstance(node.init_node, StringNode):
-                        content = node.init_node.value
-                        for i in range(min(len(content), size)):
-                            memory.write(base_address + i, ord(content[i]))
-                        if len(content) < size:
-                            memory.write(base_address + len(content), 0)
-                    else:
-                        val = self.evaluate(node.init_node, scope)
-                        memory.write(base_address, val)
                 return base_address
 
             # 處理一般變數宣告執行
@@ -196,6 +203,27 @@ class Evaluator:
                     memory.write(base_address + i, ord(char))
                 memory.write(base_address + len(node.value), 0) # 寫入結束符 \0
                 return base_address # 回傳字串的首位址
+            if isinstance(node, ForNode):
+                # 建立一個新的作用域，parent 指向當前範圍
+                # 這確保了 for(int i=0;...) 的 i 只活在裡面
+                for_scope = memory.SymbolTable(parent=scope)
+                # 1. 執行初始化 (例如 int i = 0)
+                if node.init:
+                    self.evaluate(node.init, for_scope)
+                last_result = None
+                # 2. 條件判斷 (例如 i < 10)
+                # 如果 condition 為 None (如 for(i=0;;i++))，在 C 語言中視為真 (1)
+                while True:
+                    if node.condition:
+                        condition_val = self.evaluate(node.condition, for_scope)
+                        if not condition_val: # 如果條件為假 (0)，跳出迴圈
+                            break
+                    # 3. 執行迴圈主體 (Body)
+                    last_result = self.evaluate(node.body, for_scope)   
+                    # 4. 執行更新表達式 (例如 i = i + 1)
+                    if node.update:
+                        self.evaluate(node.update, for_scope)
+                return last_result
             if isinstance(node, BinOpNode):
                 # --- 邏輯運算：特殊處理（短路） ---
                 if node.op == 'LOGICAL_AND':
@@ -214,7 +242,7 @@ class Evaluator:
                 if node.op == 'TIMES': return left_val * right_val
                 if node.op == 'DIVIDE': return int(left_val / right_val)
                 if node.op == 'MINUS': return left_val - right_val
-                if node.op == 'MOD': return left_val % right_val
+                if node.op == 'MOD': return left_val - (int(left_val / right_val) * right_val)
                 if node.op == 'BIT_XOR': return left_val^right_val
                 if node.op == 'OR': return left_val | right_val
                 if node.op == 'rs': return left_val >> right_val
