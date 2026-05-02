@@ -194,7 +194,8 @@ class Evaluator:
                     else:
                         result += fmt[i]
                         i += 1
-                        
+                if arg_idx < len(arg_values):
+                    raise RuntimeError(f"printf 錯誤：提供的參數 ({len(arg_values)}) 多於格式字串所需的數量 ({arg_idx})")
                 print(result, end='', flush=True)
                 return None
             
