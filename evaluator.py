@@ -293,7 +293,7 @@ class Evaluator:
                     return int(left_val / right_val)
                 if node.op == 'MINUS': return left_val - right_val
                 if node.op == 'MOD': return left_val - (int(left_val / right_val) * right_val)
-                if node.op == 'BIT_XOR': return left_val^right_val
+                if node.op == 'XOR': return left_val^right_val
                 if node.op == 'OR': return left_val | right_val
                 if node.op == 'rs': return left_val >> right_val
                 if node.op == 'ls': return left_val << right_val
