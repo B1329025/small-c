@@ -35,7 +35,22 @@ class Evaluator:
                         rhs_val = self.calculate_compound(old_val, rhs_val, node.op)
                     memory.write(target_addr, rhs_val)
                     return rhs_val
-                
+                if isinstance(node.left, ArrayAccessNode):
+                    info = scope.lookup(node.left.name)
+                    if info is None:
+                        raise NameError(f"陣列 '{node.left.name}' 尚未宣告過！")
+                    
+                    index = self.evaluate(node.left.index_node, scope)
+                    if index < 0 or index >= info['size']:
+                        raise IndexError(f"索引 {index} 越界 (大小: {info['size']})")
+                    
+                    target_addr = info['address'] + index
+                    rhs_val = self.evaluate(node.right, scope)
+                    
+                    final_val = self.calculate_compound(memory.read(target_addr), rhs_val, node.op) if node.op != 'assign' else rhs_val
+                    memory.write(target_addr, final_val)
+                    return final_val
+
                 var_name = node.left.name if isinstance(node.left, VarNode) else node.left
                 info = scope.lookup(var_name)
                 if info is None:
@@ -122,21 +137,7 @@ class Evaluator:
                 if index<0 or index>=size:
                     raise RuntimeError(f"索引越界！陣列 {node.name} 長度為 {size}，但存取了索引 {index}")
                 return memory.read(base_addr + index)
-            if isinstance(node,ArrayAssignNode):
-                info = scope.lookup(node.name)
-                address = info['address']
-                size = info['size']
-                index=self.evaluate(node.index_node, scope)
-                if index<0 or index>=size:
-                    raise RuntimeError(f"索引越界！陣列 {node.name} 長度為 {size}，但存取了索引 {index}")
-                val=self.evaluate(node.value_node, scope)
-                memory.write(address + index, val)
-                return val
-            if isinstance(node,DerefAssignNode):
-                target_address = self.evaluate(node.target_node, scope)
-                value = self.evaluate(node.value_node, scope)
-                memory.write(target_address, value)
-                return value
+            
             if isinstance(node, PrintNode):
                 # 1. 先計算所有參數的值
                 arg_values = [self.evaluate(arg, scope) for arg in node.args]
