@@ -183,7 +183,7 @@ class Evaluator:
             # 處理一般變數宣告執行
             if isinstance(node, VarDeclarationNode):
                 addr = memory.allocate_memory(1)
-                val = None
+                val = 0
                 if node.init_node:
                     val = self.evaluate(node.init_node, scope)
                     memory.write(addr, val)
