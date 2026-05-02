@@ -17,7 +17,6 @@ class Evaluator:
                 return memory.read(info['address'])
             if isinstance(node, AssignNode):
                 # 1. 取得左側變數名稱，並從符號表尋找資訊
-                # node.left 目前可能是一個 VarNode
                 var_name = node.left.name if isinstance(node.left, VarNode) else node.left
                 info = scope.lookup(var_name)
                 if info is None:
