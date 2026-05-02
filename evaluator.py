@@ -35,7 +35,6 @@ class Evaluator:
                     raw_str = node.right.value # 使用 node.right
                     if len(raw_str) >= info['size']:
                         raise IndexError(f"Runtime error: string too long for array (size {info['size']})")
-                    
                     # 逐字元寫入記憶體
                     for i, char in enumerate(raw_str):
                         memory.write(base_addr + i, ord(char))
