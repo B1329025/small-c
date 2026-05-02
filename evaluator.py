@@ -17,6 +17,16 @@ class Evaluator:
                 return memory.read(info['address'])
             if isinstance(node, AssignNode):
                 # 1. 取得左側變數名稱，並從符號表尋找資訊
+                if isinstance(node.left, UnaryOpNode) and node.left.op == 'DEREF':
+                    target_addr = self.evaluate(node.left.operand, scope)
+                    rhs_val = self.evaluate(node.right, scope)
+                    if node.op != 'assign':
+                        old_val = memory.read(target_addr)
+                        # ... 執行運算邏輯 ...
+                        rhs_val = self.calculate_compound(old_val, rhs_val, node.op)
+                    memory.write(target_addr, rhs_val)
+                    return rhs_val
+                
                 var_name = node.left.name if isinstance(node.left, VarNode) else node.left
                 info = scope.lookup(var_name)
                 if info is None:
