@@ -16,29 +16,54 @@ class Evaluator:
                     return info['address']
                 return memory.read(info['address'])
             if isinstance(node, AssignNode):
-                # 1. 取得右值的值 (如果是 StringNode，val 會是記憶體位址)
-                val = self.evaluate(node.expression_node, scope)
-                info = scope.lookup(node.var_name)
+                # 1. 取得左側變數名稱，並從符號表尋找資訊
+                # node.left 目前可能是一個 VarNode
+                var_name = node.left.name if isinstance(node.left, VarNode) else node.left
+                info = scope.lookup(var_name)
                 if info is None:
-                    raise NameError(f"變數 '{node.var_name}' 尚未宣告過！")
-
-                if info.get('type') == 'array' and isinstance(node.expression_node, StringNode):
+                    raise NameError(f"變數 '{var_name}' 尚未宣告過！")
+                
+                # 2. 計算右值 (R-value)
+                # 統一使用 node.right 而非 node.expression_node
+                rhs_val = self.evaluate(node.right, scope)
+                
+                # 3. 處理陣列的字串賦值 (例如 char s[10]; s = "hello";)
+                if info.get('type') == 'array' and isinstance(node.right, StringNode):
+                    if node.op != 'assign': # 複合指定如 += 不支援字串
+                        raise RuntimeError(f"陣列不支援 '{node.op}' 運算")
+                    
                     base_addr = info['address']
-                    raw_str = node.expression_node.value
-                    max_size = info['size']
-                    # 越界檢查：必須留一格給 \0
-                    if len(raw_str) >= max_size:
-                        raise IndexError(f"Runtime error: string too long for array '{node.var_name}' (size {max_size})")
-                    for i in range(len(raw_str)):
-                        memory.write(base_addr + i, ord(raw_str[i]))
-                    # 確保有寫入 \0，這樣 printf("%s") 才會正常
-                    memory.write(base_addr + len(raw_str), 0)
+                    raw_str = node.right.value # 使用 node.right
+                    if len(raw_str) >= info['size']:
+                        raise IndexError(f"Runtime error: string too long for array (size {info['size']})")
+                    
+                    # 逐字元寫入記憶體
+                    for i, char in enumerate(raw_str):
+                        memory.write(base_addr + i, ord(char))
+                    memory.write(base_addr + len(raw_str), 0) # 補上結束符號 \0
+                    
+                    info['initialized'] = True
+                    return rhs_val     
+                if node.op == 'assign':
+                    final_val = rhs_val
                 else:
-                    # 一般變數或指標賦值
-                    if info.get('type') != 'array':
-                        memory.write(info['address'], val)
+                    current_val = memory.read(info['address'])
+                    if node.op == 'PA':      final_val = current_val + rhs_val   
+                    elif node.op == 'TA':    final_val = current_val * rhs_val   
+                    elif node.op == 'MA':    final_val = current_val - rhs_val   
+                    elif node.op == 'DA':   
+                        if rhs_val == 0: raise ZeroDivisionError("分母不可是零")
+                        final_val = int(current_val / rhs_val)
+                    elif node.op == 'MOD_A': final_val = current_val % rhs_val   
+                    else:
+                        raise RuntimeError(f"未知的指定運算子: {node.op}")
+                
+                # 5. 將結果寫回記憶體[cite: 7]
+                if info.get('type') != 'array':
+                    memory.write(info['address'], final_val)
+                
                 info['initialized'] = True
-                return val
+                return final_val
             if isinstance(node ,UnaryOpNode):
                 if node.op =='DEREF':
                     address = self.evaluate(node.operand, scope)
@@ -240,7 +265,9 @@ class Evaluator:
                 right_val = self.evaluate(node.right, scope)
                 if node.op == 'PLUS': return left_val + right_val
                 if node.op == 'TIMES': return left_val * right_val
-                if node.op == 'DIVIDE': return int(left_val / right_val)
+                if node.op == 'DIVIDE':
+                    if right_val ==0: raise ZeroDivisionError("除以零錯誤")
+                    return int(left_val / right_val)
                 if node.op == 'MINUS': return left_val - right_val
                 if node.op == 'MOD': return left_val - (int(left_val / right_val) * right_val)
                 if node.op == 'BIT_XOR': return left_val^right_val

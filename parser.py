@@ -106,24 +106,22 @@ class Parser:
     def assign_value(self):
         if self.current_token().type == 'TIMES':
             self.eat('TIMES')
-            target_node = self.logical_or()
-            self.eat('assign')
-            value_node = self.logical_or()
-            return DerefAssignNode(target_node, value_node)
-
-        var_name = self.eat('ID').value
-        if self.current_token() and self.current_token().type == 'LBRACKET':
-            self.eat('LBRACKET')
-            index_node = self.logical_or()
-            self.eat('RBRACKET')
-            self.eat('assign')
-            value_node = self.logical_or()
-            return ArrayAssignNode(var_name, index_node, value_node)
-        
-        self.eat('assign')
-        value_node = self.logical_or()
-        return AssignNode(var_name, value_node)
-
+            left_node =self.logical_or()
+        else:
+            var_name = self.eat('ID').value
+            if self.current_token() and self.current_token().type == 'LBRACKET':
+                self.eat('LBRACKET')
+                index_node = self.logical_or()
+                self.eat('RBRACKET')
+                left_node =ArrayAccessNode(var_name,index_node)
+            else:
+                left_node =VarNode(var_name)
+        assign_ops =['assign','PA','MA','TA','DA','MOD_A']
+        if self.current_token() and self.current_token().type in assign_ops:
+            op_token =self.eat(self.current_token().type)
+            right_node =self.assign_value()        
+            return AssignNode(left_node,op_token.type,right_node)    
+        return left_node
     def parse_printf(self):
         self.eat('PRINTF')
         self.eat('LPAREN')

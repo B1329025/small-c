@@ -20,9 +20,10 @@ class BinOpNode:
 class VarNode:
     def __init__(self, name): self.name = name
 class AssignNode:
-    def __init__(self, var_name, expression_node):
-        self.var_name = var_name
-        self.expression_node = expression_node
+    def __init__(self, left ,op ,right):
+        self.left=left
+        self.op=op
+        self.right=right
 class UnaryOpNode:
     def __init__(self, op, operand):
         self.op = op          # 運算子，例如 'DEREF' 或 'ADDRESS_OF'
