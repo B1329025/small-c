@@ -140,7 +140,6 @@ class Evaluator:
             if isinstance(node, PrintNode):
                 # 1. 先計算所有參數的值
                 arg_values = [self.evaluate(arg, scope) for arg in node.args]
-                
                 fmt = node.format_string
                 result = ""
                 arg_idx = 0
@@ -155,7 +154,7 @@ class Evaluator:
                             result += "%"
                             i += 2
                             continue
-                        # 取出當前參數值
+                        
                         if arg_idx >= len(arg_values):
                             raise RuntimeError("printf 格式字串與參數數量不符")
                         val = arg_values[arg_idx]
@@ -189,6 +188,8 @@ class Evaluator:
                             except Exception:
                                 raise RuntimeError(f"Runtime error: 讀取字串時記憶體存取越界 (位址: {addr})")
                             result += s_val
+                        else:
+                            raise RuntimeError(f"printf 錯誤：不支援的佔位符 '%{specifier}'")
                         i += 2 # 跳過 % 和佔位符
                     else:
                         result += fmt[i]
@@ -196,6 +197,7 @@ class Evaluator:
                         
                 print(result, end='', flush=True)
                 return None
+            
             # 處理陣列宣告執行
             if isinstance(node, ArrayDeclarationNode):
                 # 1. 計算大小
@@ -210,7 +212,7 @@ class Evaluator:
                     # 寫入字元
                     for i in range(len(content)):
                         memory.write(base_address + i, ord(content[i]))  
-                    # 強制補上結尾符 \0[cite: 17]
+                    # 強制補上結尾符 \0
                     memory.write(base_address + len(content), 0)
 
                 scope.define(node.var_name, {
