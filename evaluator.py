@@ -1,6 +1,15 @@
 from nodes import *
 import memory
 class Evaluator:
+    def calculate_compound(self, current_val, rhs_val, op):
+        if op == 'PA':      return current_val + rhs_val
+        if op == 'TA':      return current_val * rhs_val
+        if op == 'MA':      return current_val - rhs_val
+        if op == 'DA':
+            if rhs_val == 0: raise ZeroDivisionError("分母不可是零")
+            return int(current_val / rhs_val)
+        if op == 'MOD_A':   return current_val % rhs_val
+        raise RuntimeError(f"未知的指定運算子: {op}")
     def evaluate(self,node,scope):
             if node is None:  
                 return None
@@ -16,7 +25,7 @@ class Evaluator:
                     return info['address']
                 return memory.read(info['address'])
             if isinstance(node, AssignNode):
-                # 1. 取得左側變數名稱，並從符號表尋找資訊
+                # 如果左邊是 *p (指標解引用)
                 if isinstance(node.left, UnaryOpNode) and node.left.op == 'DEREF':
                     target_addr = self.evaluate(node.left.operand, scope)
                     rhs_val = self.evaluate(node.right, scope)
