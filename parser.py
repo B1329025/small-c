@@ -106,7 +106,7 @@ class Parser:
     def assign_value(self):
         if self.current_token().type == 'TIMES':
             self.eat('TIMES')
-            left_node =self.logical_or()
+            left_node = UnaryOpNode('DEREF', self.logical_or())
         else:
             var_name = self.eat('ID').value
             if self.current_token() and self.current_token().type == 'LBRACKET':
