@@ -78,3 +78,10 @@ class ForNode:
         self.condition = condition  # 例如: i < 10
         self.update = update      # 例如: i = i + 1
         self.body = body        # 迴圈主體
+class FunctionDeclarationNode:
+    def __init__(self, name, body):
+        self.name = name
+        self.body = body
+class ProgramNode:
+    def __init__(self, declarations):
+        self.declarations = declarations

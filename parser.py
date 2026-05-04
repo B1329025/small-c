@@ -8,10 +8,21 @@ class Parser:
     def __init__(self, tokens):
         self.tokens = tokens
         self.pos = 0
-        self.current_scope = memory.SymbolTable(parent=None)
 
     def current_token(self):
         return self.tokens[self.pos] if self.pos < len(self.tokens) else None
+    def parse_program(self):
+        nodes = []
+        while self.current_token() and self.current_token().type != 'EOF':
+            # 嘗試解析宣告，若失敗則解析為一般語句[cite: 22]
+            if self.current_token().type in ('INT', 'CHAR'):
+                node = self.declare_variable()
+                self.eat('END')
+            else:
+                # 這裡讓它可以解析 printf 或運算式[cite: 22]
+                node = self.parse_statement() 
+            nodes.append(node)
+        return nodes
 
     def eat(self, token_type):
         token = self.current_token()
@@ -22,7 +33,8 @@ class Parser:
 
     def parse_statement(self):
         token = self.current_token()
-        if not token:
+        if token.type == 'END':
+            self.eat('END')
             return None
 
         if token.type in ('INT', 'CHAR'):
@@ -36,17 +48,12 @@ class Parser:
         if token.type == 'LBRACES':
             self.eat('LBRACES')
             statements = []
-            new_scope = memory.SymbolTable(parent=self.current_scope)
-            previous_scope = self.current_scope
-            self.current_scope = new_scope
             while self.current_token() and self.current_token().type != 'RBRACES':
                 stmt = self.parse_statement()
                 if stmt:
                     statements.append(stmt)
             self.eat('RBRACES')
             block_node = BlockNode(statements)
-            block_node.scope = new_scope
-            self.current_scope = previous_scope
             return block_node
 
         if token.type in ('ID', 'TIMES'):
@@ -60,23 +67,35 @@ class Parser:
         if token.type == 'WHILE':
             return self.WHILE()
 
-        if token.type == 'END':
-            self.eat('END')
-            return None
         if token.type =='FOR':
             return self.FOR()
         raise SyntaxError(f"無法解析的語句開頭: {token.type}")
+    def parse_block(self):
+        self.eat('LBRACES')
+        statements = []
+        while self.current_token() and self.current_token().type != 'RBRACES':
+            stmt = self.parse_statement()
+            if stmt: statements.append(stmt)
+        self.eat('RBRACES')
+        return BlockNode(statements)
+        
 
     def declare_variable(self):
         token = self.eat(self.current_token().type)
         var_base_type = token.value
         
         is_pointer = False
-        while self.current_token() and self.current_token().type == 'TIMES':
+        if self.current_token().type == 'TIMES':
             self.eat('TIMES')
             is_pointer = True
         
         var_name = self.eat('ID').value
+        if self.current_token().type == 'LPAREN':
+            self.eat('LPAREN')
+            # 這裡簡化處理，不處理參數，直接到 ')'
+            self.eat('RPAREN')
+            body = self.parse_statement() # 解析函式主體 {}
+            return FunctionDeclarationNode(var_name, body)
         final_type_name = f"{var_base_type}_ptr" if is_pointer else var_base_type
         
         # 處理陣列宣告: char a[7]
@@ -157,23 +176,15 @@ class Parser:
     def FOR(self):
         self.eat('FOR')
         self.eat('LPAREN')
-        
-        # 這裡不要建立 SymbolTable，直接解析節點
-        if self.current_token().type in ('INT', 'CHAR'):
-            init = self.declare_variable()
-        else:
-            init = self.assign_value()
+        # 修正：FOR 的 init 可以是宣告或賦值[cite: 17]
+        init = self.declare_variable() if self.current_token().type in ('INT', 'CHAR') else self.assign_value()
         self.eat('END')
-        
-        condition = self.logical_or()
+        cond = self.logical_or()
         self.eat('END')
-        update = self.assign_value()
+        upd = self.assign_value()
         self.eat('RPAREN')
-        
-        # 直接解析主體
         body = self.parse_statement()
-        
-        return ForNode(init, condition, update, body)
+        return ForNode(init, cond, upd, body)
     def logical_or(self):
         node = self.logical_and()
         while self.current_token() and self.current_token().type == 'LOGICAL_OR':

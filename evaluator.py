@@ -1,6 +1,52 @@
 from nodes import *
 import memory
 class Evaluator:
+    def __init__(self):
+        self.functions = {}
+        self.global_scope = memory.SymbolTable(parent=None)
+
+    def reset_state(self):
+        self.functions = {}
+        self.global_scope = memory.SymbolTable(parent=None)
+        memory.reset_memory() # 修正：必須清空物理記憶體[cite: 16]
+    def execute_top_level(self, nodes):
+        # 注意：這裡不呼叫 self.reset_state()，以便保留變數
+        result = None
+        for node in nodes:
+            if isinstance(node, (FunctionDeclarationNode, VarDeclarationNode, ArrayDeclarationNode)):
+                self.register_global(node) # 註冊全域宣告[cite: 18]
+            else:
+                # 直接執行陳述句 (如 printf)[cite: 18]
+                result = self.evaluate(node, self.global_scope)
+        return result
+
+    def register_global(self, node):
+        if isinstance(node, FunctionDeclarationNode):
+            self.functions[node.name] = node
+        elif isinstance(node, VarDeclarationNode):
+            addr = memory.allocate_memory(1)
+            val = self.evaluate(node.init_node, self.global_scope) if node.init_node else 0
+            memory.write(addr, val)
+            self.global_scope.define(node.var_name, {
+                'address': addr, 'size': 1, 'type': node.var_type, 'initialized': True 
+            })
+        elif isinstance(node, ArrayDeclarationNode):
+            # 全域陣列分配
+            size = self.evaluate(node.size_node, self.global_scope)
+            addr = memory.allocate_memory(size)
+            self.global_scope.define(node.var_name, {
+                'type': 'array', 'address': addr, 'size': size, 'initialized': False
+            })
+
+    def run_main(self, nodes):
+        self.reset_state()
+        for node in nodes:
+            self.register_global(node)
+        if 'main' not in self.functions:
+            raise RuntimeError("錯誤：未定義 main() 函式")
+        main_node = self.functions['main']
+        main_scope = memory.SymbolTable(parent=self.global_scope)
+        return self.evaluate(main_node.body, main_scope)
     def calculate_compound(self, current_val, rhs_val, op):
         if op == 'PA':      return current_val + rhs_val
         if op == 'TA':      return current_val * rhs_val
@@ -17,98 +63,54 @@ class Evaluator:
                 return node.value
             if isinstance(node, VarNode):
                 info = scope.lookup(node.name)
-                if info is None:
-                    raise NameError(f"變數 '{node.name}' 尚未宣告過！")
-                if not info.get('initialized' ,True):
-                    raise RuntimeError(f"變數 '{node.name}' 未初始化")
-                if info.get('type') == 'array':
-                    return info['address']
+                if not info: raise NameError(f"未定義: {node.name}")
+                if info.get('type') == 'array': return info['address']
                 return memory.read(info['address'])
             if isinstance(node, AssignNode):
-                # 如果左邊是 *p (指標解引用)
+                target_addr = None
+                info = None
                 if isinstance(node.left, UnaryOpNode) and node.left.op == 'DEREF':
                     target_addr = self.evaluate(node.left.operand, scope)
-                    rhs_val = self.evaluate(node.right, scope)
-                    if node.op != 'assign':
-                        old_val = memory.read(target_addr)
-                        rhs_val = self.calculate_compound(old_val, rhs_val, node.op)
-                    memory.write(target_addr, rhs_val)
-                    return rhs_val
-                if isinstance(node.left, ArrayAccessNode):
+                elif isinstance(node.left, ArrayAccessNode):
                     info = scope.lookup(node.left.name)
-                    if info is None:
-                        raise NameError(f"陣列 '{node.left.name}' 尚未宣告過！")
-                    
-                    index = self.evaluate(node.left.index_node, scope)
-                    if index < 0 or index >= info['size']:
-                        raise IndexError(f"索引 {index} 越界 (大小: {info['size']})")
-                    
-                    target_addr = info['address'] + index
-                    rhs_val = self.evaluate(node.right, scope)
-                    
-                    final_val = self.calculate_compound(memory.read(target_addr), rhs_val, node.op) if node.op != 'assign' else rhs_val
-                    memory.write(target_addr, final_val)
-                    return final_val
+                    if not info: raise NameError(f"未定義陣列 {node.left.name}")
+                    idx = self.evaluate(node.left.index_node, scope)
+                    target_addr = info['address'] + idx
+                elif isinstance(node.left, VarNode):
+                    info = scope.lookup(node.left.name)
+                    if not info: raise NameError(f"未定義變數 {node.left.name}")
+                    target_addr = info['address']
 
-                var_name = node.left.name if isinstance(node.left, VarNode) else node.left
-                info = scope.lookup(var_name)
-                if info is None:
-                    raise NameError(f"變數 '{var_name}' 尚未宣告過！")
-                
-                # 2. 計算右值 (R-value)
-                # 統一使用 node.right 而非 node.expression_node
                 rhs_val = self.evaluate(node.right, scope)
                 
-                # 3. 處理陣列的字串賦值 (例如 char s[10]; s = "hello";)
-                if info.get('type') == 'array' and isinstance(node.right, StringNode):
-                    if node.op != 'assign': # 複合指定如 += 不支援字串
-                        raise RuntimeError(f"陣列不支援 '{node.op}' 運算")
-                    
-                    base_addr = info['address']
-                    raw_str = node.right.value # 使用 node.right
-                    if len(raw_str) >= info['size']:
-                        raise IndexError(f"Runtime error: string too long for array (size {info['size']})")
-                    # 逐字元寫入記憶體
-                    for i, char in enumerate(raw_str):
-                        memory.write(base_addr + i, ord(char))
-                    memory.write(base_addr + len(raw_str), 0) # 補上結束符號 \0
-                    
+                # 處理字串賦值
+                if info and info.get('type') == 'array' and isinstance(node.right, StringNode):
+                    for i, c in enumerate(node.right.value):
+                        memory.write(info['address'] + i, ord(c))
+                    memory.write(info['address'] + len(node.right.value), 0)
                     info['initialized'] = True
-                    return rhs_val     
-                if node.op == 'assign':
-                    final_val = rhs_val
-                else:
-                    current_val = memory.read(info['address'])
-                    if node.op == 'PA':      final_val = current_val + rhs_val   
-                    elif node.op == 'TA':    final_val = current_val * rhs_val   
-                    elif node.op == 'MA':    final_val = current_val - rhs_val   
-                    elif node.op == 'DA':   
-                        if rhs_val == 0: raise ZeroDivisionError("分母不可是零")
-                        final_val = int(current_val / rhs_val)
-                    elif node.op == 'MOD_A': final_val = current_val % rhs_val   
-                    else:
-                        raise RuntimeError(f"未知的指定運算子: {node.op}")
+                    return rhs_val
+
+                final_val = rhs_val
+                if node.op != 'assign':
+                    cur = memory.read(target_addr)
+                    final_val = self.calculate_compound(cur, rhs_val, node.op)
                 
-                # 5. 將結果寫回記憶體[cite: 7]
-                if info.get('type') != 'array':
-                    memory.write(info['address'], final_val)
-                
-                info['initialized'] = True
+                memory.write(target_addr, final_val)
+                if info: info['initialized'] = True
                 return final_val
             if isinstance(node ,UnaryOpNode):
-                if node.op =='DEREF':
-                    address = self.evaluate(node.operand, scope)
-                    return memory.read(address)
-                elif node.op =='ADDRESS_OF':
-                    info =scope.lookup(node.operand.name)
-                    return info['address']
-                elif node.op =='NEGATIVE':
+                if node.op == 'DEREF':
+                    return memory.read(self.evaluate(node.operand, scope))
+                if node.op == 'ADDRESS_OF':
+                    return scope.lookup(node.operand.name)['address']
+                if node.op =='NEGATIVE':
                     val =self.evaluate(node.operand,scope)
                     return -val
-                elif node.op =='BIT_NOT':
+                if node.op =='BIT_NOT':
                     val =self.evaluate(node.operand,scope)
                     return ~val
-                elif node.op =='NOT':
+                if node.op =='NOT':
                     val =self.evaluate(node.operand,scope)
                     return 1 if val==0 else 0
             if isinstance(node, IfNode):
@@ -118,11 +120,11 @@ class Evaluator:
                     return self.evaluate(node.else_block, scope)
                 return None      
             if isinstance(node, BlockNode):
-                result = None
-                local_runtime_scope = memory.SymbolTable(parent=scope)
-                for stmt in node.statements:
-                    result = self.evaluate(stmt, local_runtime_scope)
-                return result
+                res = None
+                block_scope = memory.SymbolTable(parent=scope)
+                for s in node.statements:
+                    res = self.evaluate(s, block_scope)
+                return res
             if isinstance(node, WhileNode):
                 result=None
                 while self.evaluate(node.condition, scope):
@@ -250,30 +252,19 @@ class Evaluator:
                 return base_address # 回傳字串的首位址
             if isinstance(node, ForNode):
                 # 1. 建立執行期的獨立作用域 (parent 指向當前的 scope)
-                for_runtime_scope = memory.SymbolTable(parent=scope)
+                for_scope = memory.SymbolTable(parent=scope)
                 
                 # 2. 執行初始化 (關鍵：傳入 for_runtime_scope)
                 # 如果 node.init 是 int i = 0，i 就會被定義在 for_runtime_scope 裡
                 if node.init:
-                    self.evaluate(node.init, for_runtime_scope)
+                    self.evaluate(node.init, for_scope)
                 
                 last_result = None
                 while True:
-                    # 3. 檢查條件 (也必須在 for_runtime_scope 裡找 i)
                     if node.condition:
-                        condition_val = self.evaluate(node.condition, for_runtime_scope)
-                        if not condition_val:
-                            break
-                    
-                    # 4. 執行主體
-                    # 注意：如果 body 是 BlockNode ({...})，它會建立自己的子作用域，
-                    # 其 parent 會指向我們這裡的 for_runtime_scope，所以能找到 i。
-                    last_result = self.evaluate(node.body, for_runtime_scope)
-                    
-                    # 5. 更新表達式 (i = i + 1)
-                    if node.update:
-                        self.evaluate(node.update, for_runtime_scope)
-                        
+                        if not self.evaluate(node.condition, for_scope): break
+                    last_result = self.evaluate(node.body, for_scope)
+                    if node.update: self.evaluate(node.update, for_scope)
                 return last_result
             if isinstance(node, BinOpNode):
                 # --- 邏輯運算：特殊處理（短路） ---
@@ -295,7 +286,9 @@ class Evaluator:
                     if right_val ==0: raise ZeroDivisionError("除以零錯誤")
                     return int(left_val / right_val)
                 if node.op == 'MINUS': return left_val - right_val
-                if node.op == 'MOD': return left_val - (int(left_val / right_val) * right_val)
+                if node.op == 'MOD': 
+                    if right_val ==0: raise ZeroDivisionError("除以零錯誤")
+                    return left_val - (int(left_val / right_val) * right_val)
                 if node.op == 'XOR': return left_val^right_val
                 if node.op == 'OR': return left_val | right_val
                 if node.op == 'rs': return left_val >> right_val

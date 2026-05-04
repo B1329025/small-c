@@ -1,49 +1,45 @@
-from lexar import token_map, preprocess
+from lexar import Lexer
 from parser import Parser
 from evaluator import Evaluator
-import memory
 
-def start_repl():
-    global_scope = memory.SymbolTable(parent=None)
-    engine = Evaluator()
-    print("--- 迷你編譯器互動環境 (輸入 'exit' 退出) ---")
+import sys
+
+user_code_storage = []
+
+def run_interpreter():
+    global user_code_storage
+    evaluator = Evaluator() 
     
-    buffer = "" # 用來存放未完成的程式碼
-    brace_level = 0 # 追蹤大括號層級
-
     while True:
         try:
-            prompt = ">> " if brace_level == 0 else "... "
-            line = input(prompt)
-            
-            if line.lower() in ('exit', 'quit'):
-                break
-            
-            buffer += line + "\n"
-            
-            # 計算目前大括號的開閉狀態
-            brace_level += line.count('{')
-            brace_level -= line.count('}')
-
-            # 只有當所有大括號都閉合了，才開始解析與執行
-            if brace_level == 0 and buffer.strip():
-                tokens = token_map(preprocess(buffer))
-                parser = Parser(tokens)
-                parser.current_scope = global_scope
-                parser.set_evaluator(engine)
-
-                while parser.pos < len(tokens):
-                    node = parser.parse_statement()
-                    if node:
-                        engine.evaluate(node, global_scope)
+            line = input(">> ")
+            cmd = line.strip()
+            if cmd == "EXIT":
+                print("Goodbye!")
+                sys.exit(0) # 正常退出程式
+            if cmd == "RUN":
+                code = "\n".join(user_code_storage)
+                if not code.strip(): continue
                 
-                buffer = "" # 執行完畢，清空緩衝區
-                print() # 確保輸出美觀
-
+                try:
+                    lexer = Lexer(code)
+                    parser = Parser(lexer.tokens)
+                    ast = parser.parse_program()
+                    # 修改此行：使用新的互動式執行方法[cite: 18, 20]
+                    evaluator.execute_top_level(ast)
+                    # 執行完後清空暫存，這樣下次輸入就是新的指令[cite: 20]
+                    user_code_storage.clear() 
+                    print("\nExecution finished.")
+                except Exception as e:
+                    print(f"Error: {e}")
+            elif cmd == "NEW":
+                user_code_storage.clear()
+                evaluator.reset_state() # 重置包含記憶體在內的狀態[cite: 16]
+                print("Environment cleared.")
+            else:
+                user_code_storage.append(line)
         except Exception as e:
-            print(f"錯誤：{e}")
-            buffer = "" # 發生錯誤時清空緩衝區，避免死鎖
-            brace_level = 0
+            print(f"Error: {e}")
 
 if __name__ == "__main__":
-    start_repl()
+    run_interpreter()
