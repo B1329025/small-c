@@ -30,6 +30,7 @@ def run_interpreter():
 
             # 指令判斷
             if cmd == "EXIT":
+                print("Goodbye!")
                 sys.exit(0)
             elif cmd == "APPEND":
                 is_append_mode = True
@@ -37,6 +38,7 @@ def run_interpreter():
             elif cmd == "NEW":
                 user_code_storage.clear()
                 evaluator.reset_state()
+                print("Environment cleared.")
                 is_append_mode = False
                 continue
             elif cmd == "RUN":
