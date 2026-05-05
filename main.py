@@ -33,15 +33,20 @@ def run_interactive_interpreter():
             elif cmd == "LIST":
                 for i, c in enumerate(user_code_buffer): print(f"{i+1:3}: {c}")
             elif cmd == "SAVE":
-                if len(parts) < 2: print("Usage: SAVE <filename>"); continue
-                with open(parts[1], "w") as f: f.write("\n".join(user_code_buffer))
+                if len(parts) < 2: 
+                    print("Usage: SAVE <filename>"); continue
+                with open(parts[1], "w") as f:
+                    f.write("\n".join(user_code_buffer))
                 print(f"Saved to {parts[1]}")
             elif cmd == "LOAD":
-                if len(parts) < 2: print("Usage: LOAD <filename>"); continue
+                if len(parts) < 2: 
+                    print("Usage: LOAD <filename>"); continue
                 if os.path.exists(parts[1]):
-                    with open(parts[1], "r") as f: user_code_buffer = f.read().splitlines()
+                    with open(parts[1], "r") as f:
+                        # 讀取後重置 buffer
+                        user_code_buffer = f.read().splitlines()
                     print(f"Loaded {len(user_code_buffer)} lines.")
-                else: print("File not found.")
+                else: print("Error: File not found.")
             elif cmd == "VARS":
                 print("--- Global Variables ---")
                 for name, info in evaluator.global_scope.symbols.items():
@@ -51,17 +56,43 @@ def run_interactive_interpreter():
             elif cmd == "TRACE":
                 evaluator.trace_enabled = not evaluator.trace_enabled
                 print(f"Trace mode: {'ON' if evaluator.trace_enabled else 'OFF'}")
+            elif cmd == "FUNCS":
+                print("--- Defined Functions ---")
+                if not evaluator.functions:
+                    print("(No functions defined)")
+                else:
+                    for name, func_node in evaluator.functions.items():
+                        line = getattr(func_node, 'lineno', 'Unknown')
+                        params = ", ".join(func_node.params)
+                        print(f"Function: {name}({params}) [Line: {line}]")
+            elif cmd == "EDIT":
+                if len(parts) < 2:
+                    print("Usage: EDIT <line_number>"); continue
+                try:
+                    idx = int(parts[1]) - 1 # 轉為 0-based 索引
+                    if 0 <= idx < len(user_code_buffer):
+                        print(f"Old: {user_code_buffer[idx]}")
+                        new_content = input(f"{idx+1}: ")
+                        if new_content.strip():
+                            user_code_buffer[idx] = new_content
+                    else:
+                        print("Error: Line number out of range.")
+                except ValueError:
+                    print("Error: Line number must be an integer.")
             else:
                 if not is_append_mode:
                     user_code_buffer.append(line)
-                    execute_ast("\n".join(user_code_buffer), evaluator)
-                    user_code_buffer.clear()
+                    try:
+                        execute_ast("\n".join(user_code_buffer), evaluator)
+                    finally:
+                        user_code_buffer.clear()
                 else:
                     user_code_buffer.append(line)
-
+            
         except Exception as e:
             print(f"Error: {e}")
             if not is_append_mode: user_code_buffer.clear()
+
 
 def execute_ast(code, evaluator):
 
@@ -69,7 +100,8 @@ def execute_ast(code, evaluator):
     lexer = Lexer(code)
     parser = Parser(lexer.tokens)
     ast_nodes = parser.parse_program()
-    evaluator.execute_top_level(ast_nodes)
+    result = evaluator.execute_top_level(ast_nodes)
+    return result
 
 if __name__ == "__main__":
     run_interactive_interpreter()

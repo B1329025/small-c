@@ -118,6 +118,7 @@ class Parser:
         
 
     def declare_variable(self):
+        start_line = self.current_token().line if self.current_token() else None
         token = self.eat(self.current_token().type)
         var_base_type = token.value
         
@@ -143,7 +144,7 @@ class Parser:
                         break
             self.eat('RPAREN')
             body = self.parse_statement() # 解析函式主體 {}
-            return FunctionDeclarationNode(var_name, params, body)
+            return FunctionDeclarationNode(var_name, params, body, lineno=start_line)
         final_type_name = f"{var_base_type}_ptr" if is_pointer else var_base_type
         
         # 處理陣列宣告: char a[7]

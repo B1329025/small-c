@@ -79,10 +79,11 @@ class ForNode:
         self.update = update      # 例如: i = i + 1
         self.body = body        # 迴圈主體
 class FunctionDeclarationNode:
-    def __init__(self, name, params, body): 
+    def __init__(self, name, params, body,lineno=None): 
         self.name = name
         self.params = params  # 存儲參數名稱清單，例如 ['n']
         self.body = body
+        self.lineno = lineno
 class ProgramNode:
     def __init__(self, declarations):
         self.declarations = declarations

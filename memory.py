@@ -1,7 +1,7 @@
 # memory.py
 storage = []             
 next_free_address = 0    
-
+_next_address = 1000
 class SymbolTable:
     def __init__(self, parent=None):
         self.symbols = {}
@@ -22,6 +22,7 @@ class SymbolTable:
 def allocate_memory(size=1):
     global next_free_address
     addr = next_free_address
+    _next_address += size
     for _ in range(size):
         storage.append(0)
     next_free_address += size

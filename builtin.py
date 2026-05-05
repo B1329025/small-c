@@ -123,14 +123,13 @@ class Builtins:
 
     def sqrt(self, args):
         if args[0] < 0:
-            print("Runtime error: sqrt() argument must be non-negative.") # 規範要求
-            return 0
+            # 改為拋出異常，而不是 print + return 0
+            raise RuntimeError("sqrt() argument must be non-negative.")
         return int(math.sqrt(args[0]))
 
     def mod(self, args):
         if args[1] == 0:
-            print("Runtime error: division by zero.") # 規範要求
-            return 0
+            raise RuntimeError("division by zero.")
         return args[0] % args[1]
 
     def rand(self, args):

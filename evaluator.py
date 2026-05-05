@@ -23,7 +23,9 @@ class Evaluator:
         for node in nodes:
             if isinstance(node, (FunctionDeclarationNode, VarDeclarationNode, ArrayDeclarationNode)):
                 self.register_global(node)
-                
+        for node in nodes:
+            if not isinstance(node, (FunctionDeclarationNode, VarDeclarationNode, ArrayDeclarationNode)):
+                self.evaluate(node, self.global_scope)
         # 2. 第二階段：如果存在 main 函式，則執行它
         if 'main' in self.functions:
             main_node = self.functions['main']
@@ -105,6 +107,14 @@ class Evaluator:
         memory.write(addr + len(content), 0)
         
         return addr
+    def is_pointer(self, node, scope):
+        if isinstance(node, VarNode):
+            info = scope.lookup(node.name)
+            # 檢查型別字串是否包含 'ptr' 或 '*'
+            return info and ("ptr" in str(info.get('type')) or "*" in str(info.get('type')))
+        if isinstance(node, UnaryOpNode) and node.op == 'ADDRESS_OF':
+            return True
+        return False
     def execute_statement(self, node):
         if self.trace_enabled:
             print(f"[Line {node.lineno}] {node.source_code}")
@@ -285,12 +295,27 @@ class Evaluator:
                 
                 left_val = self.evaluate(node.left, scope)
                 right_val = self.evaluate(node.right, scope)
-                if node.op == 'PLUS': return left_val + right_val
+
+                
+                if node.op == 'PLUS': 
+                    if self.is_pointer(node.left, scope):
+                        return left_val + (right_val * 4) # ptr + int
+                    if self.is_pointer(node.right, scope):
+                        return right_val + (left_val * 4) # int + ptr
+                    return left_val + right_val
                 if node.op == 'TIMES': return left_val * right_val
                 if node.op == 'DIVIDE':
                     if right_val ==0: raise ZeroDivisionError("除以零錯誤")
                     return int(left_val / right_val)
-                if node.op == 'MINUS': return left_val - right_val
+                if node.op == 'MINUS':
+                    left_is_ptr = self.is_pointer(node.left, scope)
+                    right_is_ptr = self.is_pointer(node.right, scope)
+                    if left_is_ptr and right_is_ptr:
+                        # 指標 - 指標 = 元素個數 (位址差 / 4)
+                        return (left_val - right_val) // 4
+                    if left_is_ptr:
+                        return left_val - (right_val * 4) # ptr - int
+                    return left_val - right_val
                 if node.op == 'MOD': 
                     if right_val ==0: raise ZeroDivisionError("除以零錯誤")
                     return left_val - (int(left_val / right_val) * right_val)
