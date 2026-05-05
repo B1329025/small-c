@@ -11,15 +11,16 @@ class Parser:
 
     def current_token(self):
         return self.tokens[self.pos] if self.pos < len(self.tokens) else None
+    # parser_9.py
     def parse_program(self):
         nodes = []
         while self.current_token() and self.current_token().type != 'EOF':
-            # 嘗試解析宣告，若失敗則解析為一般語句[cite: 22]
             if self.current_token().type in ('INT', 'CHAR'):
                 node = self.declare_variable()
-                self.eat('END')
+                # 只有當它不是函式宣告時，才需要強制吃掉分號 (END)
+                if not isinstance(node, FunctionDeclarationNode):
+                    self.eat('END')
             else:
-                # 這裡讓它可以解析 printf 或運算式[cite: 22]
                 node = self.parse_statement() 
             nodes.append(node)
         return nodes
@@ -117,12 +118,23 @@ class Parser:
             is_pointer = True
         
         var_name = self.eat('ID').value
+        
         if self.current_token().type == 'LPAREN':
             self.eat('LPAREN')
-            # 這裡簡化處理，不處理參數，直接到 ')'
+            params = []
+            # 解析參數清單
+            if self.current_token() and self.current_token().type in ('INT', 'CHAR'):
+                while True:
+                    self.eat(self.current_token().type) # 吃掉 int/char
+                    p_name = self.eat('ID').value       # 抓取名稱 n
+                    params.append(p_name)
+                    if self.current_token() and self.current_token().type == 'COMMA':
+                        self.eat('COMMA')
+                    else:
+                        break
             self.eat('RPAREN')
             body = self.parse_statement() # 解析函式主體 {}
-            return FunctionDeclarationNode(var_name, body)
+            return FunctionDeclarationNode(var_name, params, body)
         final_type_name = f"{var_base_type}_ptr" if is_pointer else var_base_type
         
         # 處理陣列宣告: char a[7]

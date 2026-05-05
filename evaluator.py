@@ -19,14 +19,20 @@ class Evaluator:
         self.global_scope = memory.SymbolTable(parent=None)
         memory.reset_memory()
     def execute_top_level(self, nodes):
-        result = None
+        # 1. 第一階段：註冊所有的全域宣告 (變數、陣列、函式)
         for node in nodes:
             if isinstance(node, (FunctionDeclarationNode, VarDeclarationNode, ArrayDeclarationNode)):
-                self.register_global(node) # 註冊全域宣告
-            else:
-                # 直接執行陳述句 (如 printf)
-                result = self.evaluate(node, self.global_scope)
-        return result
+                self.register_global(node)
+                
+        # 2. 第二階段：如果存在 main 函式，則執行它
+        if 'main' in self.functions:
+            main_node = self.functions['main']
+            main_scope = memory.SymbolTable(parent=self.global_scope)
+            try:
+                return self.evaluate(main_node.body, main_scope)
+            except ReturnException as e:
+                return e.value
+        return None
 
     def register_global(self, node):
         if isinstance(node, FunctionDeclarationNode):
@@ -100,19 +106,41 @@ class Evaluator:
         if self.trace_enabled:
             print(f"[Line {node.lineno}] {node.source_code}")
     def execute_user_function(self, func_node, arg_values):
-        # 建立函式獨立的作用域
+        # 1. 建立函式獨立的作用域
         func_scope = memory.SymbolTable(parent=self.global_scope)
         
-        # 這裡需要實作參數綁定 (假設你的 Parser 有解析參數名稱)
-        # 暫時先執行主體
+        # 2. 參數綁定：將呼叫時的數值賦予參數變數
+        for i, param_name in enumerate(func_node.params):
+            val = arg_values[i]
+            # 分配記憶體並寫入值
+            addr = memory.allocate_memory(1)
+            memory.write(addr, val)
+            # 在新作用域定義該參數
+            func_scope.define(param_name, {
+                'address': addr, 'type': 'int', 'size': 1, 'initialized': True 
+            })
+        
+        # 3. 執行主體並捕捉回傳值
         try:
             return self.evaluate(func_node.body, func_scope)
         except ReturnException as e:
-            return e.value # 捕捉 return 訊號並回傳數值        
+            return e.value      
 
     def evaluate(self,node,scope):
             if node is None:  
                 return None
+            
+            if isinstance(node, VarDeclarationNode):
+                # 1. 分配 1 個單位的記憶體空間
+                addr = memory.allocate_memory(1)
+                # 2. 如果有初始值就計算它，否則預設為 0
+                val = self.evaluate(node.init_node, scope) if node.init_node else 0
+                memory.write(addr, val)
+                # 3. 將變數定義在當前的作用域 (scope) 中
+                scope.define(node.var_name, {
+                    'address': addr, 'type': node.var_type, 'size': 1, 'initialized': True 
+                })
+                return val
             if isinstance(node, BreakNode):
                 raise BreakException()
             if isinstance(node, ContinueNode):
