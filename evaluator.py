@@ -110,8 +110,8 @@ class Evaluator:
     def is_pointer(self, node, scope):
         if isinstance(node, VarNode):
             info = scope.lookup(node.name)
-            # 檢查型別字串是否包含 'ptr' 或 '*'
-            return info and ("ptr" in str(info.get('type')) or "*" in str(info.get('type')))
+            # 陣列或標記為 ptr 的變數都應視為指標運算
+            return info and (info.get('type') == 'array' or "ptr" in str(info.get('type')))
         if isinstance(node, UnaryOpNode) and node.op == 'ADDRESS_OF':
             return True
         return False
