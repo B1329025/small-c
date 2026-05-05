@@ -108,12 +108,19 @@ class Evaluator:
         
         return addr
     def is_pointer(self, node, scope):
+        # 情況 1: 直接是變數節點，檢查其符號表中的型別[cite: 34]
         if isinstance(node, VarNode):
             info = scope.lookup(node.name)
-            # 陣列或標記為 ptr 的變數都應視為指標運算
             return info and (info.get('type') == 'array' or "ptr" in str(info.get('type')))
+        
+        # 情況 2: 取位址運算 (&a)[cite: 34]
         if isinstance(node, UnaryOpNode) and node.op == 'ADDRESS_OF':
             return True
+        
+        # 情況 3: 巢狀運算 (p + 1) 本身產生的結果也是指標
+        if isinstance(node, BinOpNode) and node.op in ('PLUS', 'MINUS'):
+            return self.is_pointer(node.left, scope) or self.is_pointer(node.right, scope)
+            
         return False
     def execute_statement(self, node):
         if self.trace_enabled:
@@ -154,6 +161,28 @@ class Evaluator:
                     'address': addr, 'type': node.var_type, 'size': 1, 'initialized': True 
                 })
                 return val
+            # 在 evaluator_19.py 的 evaluate 方法內
+            if isinstance(node, ArrayDeclarationNode):
+                # 1. 計算陣列大小（執行 size_node 得到數值）[cite: 35, 39]
+                size = self.evaluate(node.size_node, scope)
+                
+                # 2. 在模擬記憶體中分配連續空間
+                addr = memory.allocate_memory(size)
+                
+                # 3. 將陣列資訊定義在當前作用域 (scope)[cite: 38]
+                scope.define(node.var_name, {
+                    'type': 'array', 
+                    'address': addr, 
+                    'size': size, 
+                    'initialized': False
+                })
+                
+                # 4. 如果有初始值（例如字串賦值），則進行處理[cite: 35, 39]
+                if node.init_node:
+                    init_val = self.evaluate(node.init_node, scope)
+                    # 這裡可以實作陣列初始化的邏輯
+                    
+                return addr
             if isinstance(node, BreakNode):
                 raise BreakException()
             if isinstance(node, ContinueNode):
@@ -177,6 +206,7 @@ class Evaluator:
                     info = scope.lookup(node.left.name)
                     if not info: raise NameError(f"未定義陣列 {node.left.name}")
                     idx = self.evaluate(node.left.index_node, scope)
+                    # 這裡必須與 ArrayAccessNode 的邏輯統一
                     target_addr = info['address'] + idx
                 elif isinstance(node.left, VarNode):
                     info = scope.lookup(node.left.name)
@@ -268,13 +298,20 @@ class Evaluator:
                 return self.visit_FunctionCallNode(node, scope)
             if isinstance(node, StringNode):
                 return self.visit_StringNode(node)
-            if isinstance(node,ArrayAccessNode):
+            if isinstance(node, ArrayAccessNode):
                 info = scope.lookup(node.name)
+                if not info:
+                    raise NameError(f"未定義陣列: {node.name}")
+                
                 base_addr = info['address']
                 size = info['size']
-                index=self.evaluate(node.index_node, scope)
-                if index<0 or index>=size:
+                index = self.evaluate(node.index_node, scope)
+                
+                # 邊界檢查[cite: 34]
+                if index < 0 or index >= size:
                     raise RuntimeError(f"索引越界！陣列 {node.name} 長度為 {size}，但存取了索引 {index}")
+                
+                # 核心邏輯：位址計算與指標算術保持一致
                 return memory.read(base_addr + index)
             
             if isinstance(node, PrintNode):
@@ -299,9 +336,11 @@ class Evaluator:
                 
                 if node.op == 'PLUS': 
                     if self.is_pointer(node.left, scope):
-                        return left_val + (right_val * 4) # ptr + int
+                        # 指標 + 整數：位址直接加上數值（單位一致）
+                        return left_val + right_val 
                     if self.is_pointer(node.right, scope):
-                        return right_val + (left_val * 4) # int + ptr
+                        # 整數 + 指標
+                        return right_val + left_val 
                     return left_val + right_val
                 if node.op == 'TIMES': return left_val * right_val
                 if node.op == 'DIVIDE':
@@ -311,10 +350,11 @@ class Evaluator:
                     left_is_ptr = self.is_pointer(node.left, scope)
                     right_is_ptr = self.is_pointer(node.right, scope)
                     if left_is_ptr and right_is_ptr:
-                        # 指標 - 指標 = 元素個數 (位址差 / 4)
-                        return (left_val - right_val) // 4
+                        # 指標 - 指標：回傳位址差（元素個數）
+                        return (left_val - right_val) 
                     if left_is_ptr:
-                        return left_val - (right_val * 4) # ptr - int
+                        # 指標 - 整數
+                        return left_val - right_val 
                     return left_val - right_val
                 if node.op == 'MOD': 
                     if right_val ==0: raise ZeroDivisionError("除以零錯誤")
