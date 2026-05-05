@@ -108,12 +108,12 @@ class Evaluator:
         
         return addr
     def is_pointer(self, node, scope):
-        # 情況 1: 直接是變數節點，檢查其符號表中的型別[cite: 34]
+        # 情況 1: 直接是變數節點，檢查其符號表中的型別
         if isinstance(node, VarNode):
             info = scope.lookup(node.name)
             return info and (info.get('type') == 'array' or "ptr" in str(info.get('type')))
         
-        # 情況 2: 取位址運算 (&a)[cite: 34]
+        # 情況 2: 取位址運算 (&a)
         if isinstance(node, UnaryOpNode) and node.op == 'ADDRESS_OF':
             return True
         
@@ -163,13 +163,13 @@ class Evaluator:
                 return val
             # 在 evaluator_19.py 的 evaluate 方法內
             if isinstance(node, ArrayDeclarationNode):
-                # 1. 計算陣列大小（執行 size_node 得到數值）[cite: 35, 39]
+                # 1. 計算陣列大小（執行 size_node 得到數值）
                 size = self.evaluate(node.size_node, scope)
                 
                 # 2. 在模擬記憶體中分配連續空間
                 addr = memory.allocate_memory(size)
                 
-                # 3. 將陣列資訊定義在當前作用域 (scope)[cite: 38]
+                # 3. 將陣列資訊定義在當前作用域 (scope)
                 scope.define(node.var_name, {
                     'type': 'array', 
                     'address': addr, 
@@ -177,7 +177,7 @@ class Evaluator:
                     'initialized': False
                 })
                 
-                # 4. 如果有初始值（例如字串賦值），則進行處理[cite: 35, 39]
+                # 4. 如果有初始值（例如字串賦值），則進行處理
                 if node.init_node:
                     init_val = self.evaluate(node.init_node, scope)
                     # 這裡可以實作陣列初始化的邏輯
@@ -307,7 +307,7 @@ class Evaluator:
                 size = info['size']
                 index = self.evaluate(node.index_node, scope)
                 
-                # 邊界檢查[cite: 34]
+  
                 if index < 0 or index >= size:
                     raise RuntimeError(f"索引越界！陣列 {node.name} 長度為 {size}，但存取了索引 {index}")
                 

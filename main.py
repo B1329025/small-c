@@ -27,6 +27,10 @@ def run_interactive_interpreter():
                 is_append_mode = False
                 print("Environment reset.")
             elif cmd == "APPEND": is_append_mode = True
+            elif cmd =="ABOUT":
+                print("niga  ver 6.7.0\n")
+                print("author:  lightyear   smallfire    nega\n")
+                print("114-2")
             elif cmd == "RUN":
                 execute_ast("\n".join(user_code_buffer), evaluator)
                 is_append_mode = False

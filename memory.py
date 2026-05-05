@@ -37,7 +37,7 @@ def write(address, value):
         raise MemoryError(f"Segmentation Fault: 嘗試寫入無效位址 {address}")
 
 def read(address):
-    """從指定位址讀取數值[cite: 39]"""
+    """從指定位址讀取數值"""
     if 0 <= address < len(storage):
         return storage[address]
     else:

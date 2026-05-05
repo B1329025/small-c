@@ -106,7 +106,7 @@ class Builtins:
             s_idx += 1
         return dest
 
-    # --- 數學函式[cite: 31] ---
+
     def abs(self, args):
         return abs(args[0])
 
@@ -139,7 +139,6 @@ class Builtins:
         random.seed(args[0])
         return 0
 
-    # --- 記憶體與工具函式[cite: 31] ---
     def memset(self, args):
         ptr, value, size = args[0], args[1], args[2]
         for i in range(size):

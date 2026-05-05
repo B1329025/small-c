@@ -225,7 +225,7 @@ class Parser:
     def FOR(self):
         self.eat('FOR')
         self.eat('LPAREN')
-        # 修正：FOR 的 init 可以是宣告或賦值[cite: 17]
+        # 修正：FOR 的 init 可以是宣告或賦值
         init = self.declare_variable() if self.current_token().type in ('INT', 'CHAR') else self.assign_value()
         self.eat('END')
         cond = self.logical_or()
