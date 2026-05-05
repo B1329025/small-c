@@ -85,3 +85,14 @@ class FunctionDeclarationNode:
 class ProgramNode:
     def __init__(self, declarations):
         self.declarations = declarations
+class FunctionCallNode:
+    def __init__(self, name, args):
+        self.name = name  # 函式名稱，例如 "strcmp"
+        self.args = args  # 參數列表，裡面會是其他的 Node
+class BreakNode:
+    pass
+class ContinueNode:
+    pass
+class ReturnNode:
+    def __init__(self, value_node=None):
+        self.value_node = value_node # 回傳的表達式節點，例如 return a + 5;

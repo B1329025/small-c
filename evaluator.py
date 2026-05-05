@@ -1,22 +1,30 @@
 from nodes import *
+from builtin import Builtins
 import memory
+class BreakException(Exception): pass
+class ContinueException(Exception): pass
+class ReturnException(Exception):
+    def __init__(self, value):
+        self.value = value # 攜帶要回傳的值
 class Evaluator:
+    
     def __init__(self):
         self.functions = {}
         self.global_scope = memory.SymbolTable(parent=None)
-
+        self.builtins = Builtins()
+        self.trace_enabled = False
+        self.current_scope = self.global_scope
     def reset_state(self):
         self.functions = {}
         self.global_scope = memory.SymbolTable(parent=None)
-        memory.reset_memory() # 修正：必須清空物理記憶體[cite: 16]
+        memory.reset_memory()
     def execute_top_level(self, nodes):
-        # 注意：這裡不呼叫 self.reset_state()，以便保留變數
         result = None
         for node in nodes:
             if isinstance(node, (FunctionDeclarationNode, VarDeclarationNode, ArrayDeclarationNode)):
-                self.register_global(node) # 註冊全域宣告[cite: 18]
+                self.register_global(node) # 註冊全域宣告
             else:
-                # 直接執行陳述句 (如 printf)[cite: 18]
+                # 直接執行陳述句 (如 printf)
                 result = self.evaluate(node, self.global_scope)
         return result
 
@@ -56,9 +64,62 @@ class Evaluator:
             return int(current_val / rhs_val)
         if op == 'MOD_A':   return current_val % rhs_val
         raise RuntimeError(f"未知的指定運算子: {op}")
+    def visit_FunctionCallNode(self, node, scope):
+        # 1. 取得參數值 (計算每一個 arg 表達式)
+        arg_values = [self.evaluate(arg, scope) for arg in node.args]
+
+        # 2. 檢查是否為內建函式 (優先權最高)
+        if node.name in self.builtins.mapping:
+            # 呼叫 builtin.py 裡的方法
+            return self.builtins.mapping[node.name](arg_values)
+
+        # 3. 檢查是否為使用者定義的函式 (如 main, swap 等)
+        if node.name in self.functions:
+            func_node = self.functions[node.name]
+            # 這裡要處理自定義函式的 Scope 跳轉與參數綁定
+            return self.execute_user_function(func_node, arg_values)
+
+        raise NameError(f"Runtime Error: Undefined function '{node.name}'")
+    def visit_StringNode(self, node):
+        # 1. 計算需要分配的空間：字串長度 + 1 (結尾符 \0)
+        content = node.value
+        size = len(content) + 1
+        
+        # 2. 呼叫現有的記憶體分配方法 (假設你的 memory 有 allocate_memory)
+        addr = memory.allocate_memory(size)
+        
+        # 3. 將字串內容逐一寫入模擬記憶體
+        for i, char in enumerate(content):
+            memory.write(addr + i, ord(char))
+            
+        # 4. 寫入 C 字串的結尾符 \0
+        memory.write(addr + len(content), 0)
+        
+        return addr
+    def execute_statement(self, node):
+        if self.trace_enabled:
+            print(f"[Line {node.lineno}] {node.source_code}")
+    def execute_user_function(self, func_node, arg_values):
+        # 建立函式獨立的作用域
+        func_scope = memory.SymbolTable(parent=self.global_scope)
+        
+        # 這裡需要實作參數綁定 (假設你的 Parser 有解析參數名稱)
+        # 暫時先執行主體
+        try:
+            return self.evaluate(func_node.body, func_scope)
+        except ReturnException as e:
+            return e.value # 捕捉 return 訊號並回傳數值        
+
     def evaluate(self,node,scope):
             if node is None:  
                 return None
+            if isinstance(node, BreakNode):
+                raise BreakException()
+            if isinstance(node, ContinueNode):
+                raise ContinueException()
+            if isinstance(node, ReturnNode):
+                val = self.evaluate(node.value_node, scope) if node.value_node else 0
+                raise ReturnException(val)
             if isinstance(node ,NumberNode):
                 return node.value
             if isinstance(node, VarNode):
@@ -126,10 +187,35 @@ class Evaluator:
                     res = self.evaluate(s, block_scope)
                 return res
             if isinstance(node, WhileNode):
-                result=None
+                result = None
                 while self.evaluate(node.condition, scope):
-                    result=self.evaluate(node.then_block, scope)
-                return result    
+                    try:
+                        result = self.evaluate(node.then_block, scope)
+                    except BreakException:
+                        break # 中斷 Python 的 while 迴圈
+                    except ContinueException:
+                        continue # 跳過本次循環，進入下一次 condition 判斷
+                return result  
+            if isinstance(node, ForNode):
+                result = None
+                # 1. 執行初始化
+                self.evaluate(node.init, scope)
+                # 2. 進入迴圈
+                while self.evaluate(node.condition, scope):
+                    try:
+                        result = self.evaluate(node.body, scope)
+                    except BreakException:
+                        break
+                    except ContinueException:
+                        pass # 跳到更新步驟
+                    
+                    # 3. 執行更新表達式 (i = i + 1)
+                    self.evaluate(node.update, scope)
+                return result
+            if isinstance(node, FunctionCallNode):
+                return self.visit_FunctionCallNode(node, scope)
+            if isinstance(node, StringNode):
+                return self.visit_StringNode(node)
             if isinstance(node,ArrayAccessNode):
                 info = scope.lookup(node.name)
                 base_addr = info['address']
@@ -142,130 +228,7 @@ class Evaluator:
             if isinstance(node, PrintNode):
                 # 1. 先計算所有參數的值
                 arg_values = [self.evaluate(arg, scope) for arg in node.args]
-                fmt = node.format_string
-                result = ""
-                arg_idx = 0
-                i = 0
-                while i < len(fmt):
-                    if fmt[i] == '\\' and i + 1 < len(fmt) and fmt[i+1] == 'n':
-                        result += "\n"  # 將原始字串中的 \ 和 n 轉換為真正的換行符
-                        i += 2
-                    elif fmt[i] == '%' and i + 1 < len(fmt):
-                        specifier = fmt[i+1]
-                        if specifier == '%': # 輸出百分比符號本身
-                            result += "%"
-                            i += 2
-                            continue
-                        
-                        if arg_idx >= len(arg_values):
-                            raise RuntimeError("printf 格式字串與參數數量不符")
-                        val = arg_values[arg_idx]
-                        arg_idx += 1
-                        
-                        if specifier == 'd': # 整數
-                            result += str(int(val))
-                        elif specifier == 'c': # 字元
-                            result += chr(int(val))
-                        elif specifier == 'x': # 十六進位
-                            result += hex(int(val))[2:]
-                        elif specifier == 's': # 字串 (假設 val 是記憶體位址)
-                            addr = val
-                            s_val = ""
-                            # 模擬讀取直到遇到 \0
-                            try:
-                                while True:
-                                    # 讀取位址內容
-                                    char_code = memory.read(addr) 
-                                    
-                                    # 遇到結尾符 \0 則停止
-                                    if char_code == 0: 
-                                        break
-                                    
-                                    s_val += chr(char_code)
-                                    addr += 1
-                                    
-                                    # 安全機制：防止無限迴圈（可選）
-                                    if len(s_val) > 1000: 
-                                        break
-                            except Exception:
-                                raise RuntimeError(f"Runtime error: 讀取字串時記憶體存取越界 (位址: {addr})")
-                            result += s_val
-                        else:
-                            raise RuntimeError(f"printf 錯誤：不支援的佔位符 '%{specifier}'")
-                        i += 2 # 跳過 % 和佔位符
-                    else:
-                        result += fmt[i]
-                        i += 1
-                if arg_idx < len(arg_values):
-                    raise RuntimeError(f"printf 錯誤：提供的參數 ({len(arg_values)}) 多於格式字串所需的數量 ({arg_idx})")
-                print(result, end='', flush=True)
-                return None
-            
-            # 處理陣列宣告執行
-            if isinstance(node, ArrayDeclarationNode):
-                # 1. 計算大小
-                size = self.evaluate(node.size_node, scope)
-                # 2. 分配記憶體
-                base_address = memory.allocate_memory(size)
-                if node.init_node and isinstance(node.init_node, StringNode):
-                    content = node.init_node.value
-                    # 檢查空間是否足夠存放字串 + \0
-                    if len(content) >= size:
-                        raise IndexError(f"Runtime error: array size {size} is too small for string '{content}' with null terminator.")
-                    # 寫入字元
-                    for i in range(len(content)):
-                        memory.write(base_address + i, ord(content[i]))  
-                    # 強制補上結尾符 \0
-                    memory.write(base_address + len(content), 0)
-
-                scope.define(node.var_name, {
-                    'type': 'array',
-                    'element_type': node.var_type,
-                    'address': base_address,
-                    'size': size,
-                    'initialized': True if node.init_node else False
-                })
-                return base_address
-
-            # 處理一般變數宣告執行
-            if isinstance(node, VarDeclarationNode):
-                addr = memory.allocate_memory(1)
-                val = 0
-                if node.init_node:
-                    val = self.evaluate(node.init_node, scope)
-                    memory.write(addr, val)
-                
-                scope.define(node.var_name, {
-                    'address': addr,
-                    'size': 1,
-                    'type': node.var_type,
-                    'initialized': True 
-                })
-                return val
-            if isinstance(node, StringNode):
-                # 1. 在記憶體中分配空間 (字串長度 + 1 個 '\0' 結束符)
-                base_address = memory.allocate_memory(len(node.value) + 1)
-                # 2. 逐一寫入 ASCII 碼
-                for i, char in enumerate(node.value):
-                    memory.write(base_address + i, ord(char))
-                memory.write(base_address + len(node.value), 0) # 寫入結束符 \0
-                return base_address # 回傳字串的首位址
-            if isinstance(node, ForNode):
-                # 1. 建立執行期的獨立作用域 (parent 指向當前的 scope)
-                for_scope = memory.SymbolTable(parent=scope)
-                
-                # 2. 執行初始化 (關鍵：傳入 for_runtime_scope)
-                # 如果 node.init 是 int i = 0，i 就會被定義在 for_runtime_scope 裡
-                if node.init:
-                    self.evaluate(node.init, for_scope)
-                
-                last_result = None
-                while True:
-                    if node.condition:
-                        if not self.evaluate(node.condition, for_scope): break
-                    last_result = self.evaluate(node.body, for_scope)
-                    if node.update: self.evaluate(node.update, for_scope)
-                return last_result
+                return self.builtins.printf(node.format_string, arg_values)
             if isinstance(node, BinOpNode):
                 # --- 邏輯運算：特殊處理（短路） ---
                 if node.op == 'LOGICAL_AND':

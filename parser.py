@@ -69,6 +69,13 @@ class Parser:
 
         if token.type =='FOR':
             return self.FOR()
+        # Parser.parse_statement 內部改為：
+        if token.type == 'BREAK':
+            return self.parse_break()
+        if token.type == 'CONTINUE':
+            return self.parse_continue()
+        if token.type == 'RETURN':
+            return self.parse_return()
         raise SyntaxError(f"無法解析的語句開頭: {token.type}")
     def parse_block(self):
         self.eat('LBRACES')
@@ -78,6 +85,26 @@ class Parser:
             if stmt: statements.append(stmt)
         self.eat('RBRACES')
         return BlockNode(statements)
+    # 在 Parser 類別內新增這些方法
+
+    def parse_break(self):
+        self.eat('BREAK')  # 消耗 'break' Token
+        self.eat('END')    # 消耗 ';' Token
+        return BreakNode()
+
+    def parse_continue(self):
+        self.eat('CONTINUE') # 消耗 'continue' Token
+        self.eat('END')      # 消耗 ';' Token
+        return ContinueNode()
+
+    def parse_return(self):
+        self.eat('RETURN')   # 消耗 'return' Token
+        value_node = None
+        # 如果後面不是分號，代表有回傳值（例如 return a + 5;）
+        if self.current_token() and self.current_token().type != 'END':
+            value_node = self.logical_or() 
+        self.eat('END')      # 消耗 ';' Token
+        return ReturnNode(value_node)
         
 
     def declare_variable(self):
@@ -278,21 +305,43 @@ class Parser:
             node = ArrayAccessNode(var_name, index_node)
         return node
     def primary(self):
-        """最基礎的原子單元"""
+        """最基礎的原子單元，新增對函式呼叫的支援"""
         token = self.current_token()  
+        
         if token.type == 'NUMBER':
             return NumberNode(int(self.eat('NUMBER').value))           
+        
         if token.type == 'STRING':
             return StringNode(self.eat('STRING').value[1:-1])
+            
         if token.type == 'CHAR':
             # 將 'A' 轉為 ASCII 碼
             val = ord(self.eat('CHAR').value[1])
             return NumberNode(val)
+            
         if token.type == 'ID':
-            return VarNode(self.eat('ID').value)          
+            name = self.eat('ID').value
+            # --- 關鍵修正：檢查 ID 後面是否接著左括號 ( ---
+            if self.current_token() and self.current_token().type == 'LPAREN':
+                self.eat('LPAREN')
+                args = []
+                # 解析參數列表
+                if self.current_token().type != 'RPAREN':
+                    args.append(self.logical_or())
+                    while self.current_token().type == 'COMMA':
+                        self.eat('COMMA')
+                        args.append(self.logical_or())
+                self.eat('RPAREN')
+                # 回傳 FunctionCallNode (你在 nodes.py 中已定義此類別)
+                return FunctionCallNode(name, args)
+            
+            # 如果後面沒有括號，才當作一般變數
+            return VarNode(name)          
+            
         if token.type == 'LPAREN':
             self.eat('LPAREN')
             node = self.logical_or()
             self.eat('RPAREN')
             return node        
+            
         raise SyntaxError(f"無法識別的語法單元: {token}")
