@@ -92,7 +92,7 @@ class Lexer:
             ('NUMBER', r'0[xX][0-9a-fA-F]+|[1-9]\d*|0'),  #[1-9]\d*|0' -> 確保數字不是0開頭，但0也能被讀取
             ('MISMATCH', r'.'),
         ]
-        KEYWORDS = {'if', 'else', 'while', 'for', 'int', 'char', 'void', 'return', 'break', 'continue','printf'}
+        KEYWORDS = {'if', 'else', 'while', 'for', 'int', 'char', 'void', 'return', 'break', 'continue','printf','do'}
         master_regex = '|'.join(f'(?P<{name}>{reg})' for name, reg in token_type);
 
         tokens = []

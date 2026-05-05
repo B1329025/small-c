@@ -33,6 +33,7 @@ class Evaluator:
             except ReturnException as e:
                 return e.value
         return None
+    
 
     def register_global(self, node):
         if isinstance(node, FunctionDeclarationNode):
@@ -68,7 +69,9 @@ class Evaluator:
         if op == 'DA':
             if rhs_val == 0: raise ZeroDivisionError("分母不可是零")
             return int(current_val / rhs_val)
-        if op == 'MOD_A':   return current_val % rhs_val
+        if op == 'MOD_A':   
+            if rhs_val == 0: raise ZeroDivisionError("分母不可是零")
+            return current_val % rhs_val
         raise RuntimeError(f"未知的指定運算子: {op}")
     def visit_FunctionCallNode(self, node, scope):
         # 1. 取得參數值 (計算每一個 arg 表達式)
@@ -224,6 +227,17 @@ class Evaluator:
                     except ContinueException:
                         continue # 跳過本次循環，進入下一次 condition 判斷
                 return result  
+            if isinstance(node, DoWhileNode):
+                result = None
+                while True:
+                    try:
+                        result = self.evaluate(node.body, scope)
+                    except BreakException: break
+                    except ContinueException: pass 
+                    
+                    if not self.evaluate(node.condition, scope):
+                        break
+                return result
             if isinstance(node, ForNode):
                 result = None
                 # 1. 執行初始化

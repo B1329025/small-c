@@ -51,19 +51,22 @@ class Builtins:
         return 0
 
     def scanf(self, args):
-        # 簡化版實作：僅支援 %d 與 %c
-        fmt_addr = args[0]
-        fmt = self._get_string(fmt_addr)
-        placeholders = fmt.count('%')
+        # 規範：args[0] 是格式字串位址，args[1:] 是存放結果的記憶體位址
+        fmt = self._get_string(args[0])
+        placeholders = fmt.count('%d') + fmt.count('%c')
         count = 0
-        for i in range(placeholders):
-            val = input().strip() # 互動式取得輸入
-            target_addr = args[i + 1]
-            try:
-                # 根據規範，引數必須為指標
-                memory.write(target_addr, int(val))
+        try:
+            user_input = input().split()
+            for i in range(min(placeholders, len(user_input))):
+                val = user_input[i]
+                target_addr = args[i + 1]
+                # 判斷是數字還是字元
+                if val.isdigit():
+                    memory.write(target_addr, int(val))
+                else:
+                    memory.write(target_addr, ord(val[0]))
                 count += 1
-            except: break
+        except Exception: pass
         return count
 
     # --- 字串處理函式 ---

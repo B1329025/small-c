@@ -97,3 +97,7 @@ class ContinueNode:
 class ReturnNode:
     def __init__(self, value_node=None):
         self.value_node = value_node # 回傳的表達式節點，例如 return a + 5;
+class DoWhileNode:
+    def __init__(self, body, condition):
+        self.body = body
+        self.condition = condition

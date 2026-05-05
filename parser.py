@@ -77,6 +77,15 @@ class Parser:
             return self.parse_continue()
         if token.type == 'RETURN':
             return self.parse_return()
+        if token.type == 'DO':
+            self.eat('DO')
+            body = self.parse_statement()
+            self.eat('WHILE')
+            self.eat('LPAREN')
+            cond = self.logical_or()
+            self.eat('RPAREN')
+            self.eat('END') 
+            return DoWhileNode(body, cond)
         raise SyntaxError(f"無法解析的語句開頭: {token.type}")
     def parse_block(self):
         self.eat('LBRACES')

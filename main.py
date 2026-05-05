@@ -1,4 +1,5 @@
 import sys
+import os
 from lexar import Lexer
 from parser import Parser
 from evaluator import Evaluator
@@ -8,71 +9,62 @@ def run_interactive_interpreter():
     user_code_buffer = []
     is_append_mode = False
 
-    print("C-Lite Interpreter (Active)")
+    print("Small-C Interpreter (Enhanced)")
     
     while True:
         try:
-            # --- 1. 自動感應提示符號邏輯 ---
-            current_content = "\n".join(user_code_buffer)
-            # 計算大括號是否對齊[cite: 25]
-            open_braces = current_content.count('{')
-            close_braces = current_content.count('}')
-            
-            if is_append_mode or open_braces > close_braces:
-                prompt = "> "
-            else:
-                prompt = "sc> "
-
+            prompt = "> " if is_append_mode else "sc> "
             line = input(prompt)
-            clean_line = line.strip()
-            cmd = clean_line.upper()
+            parts = line.strip().split()
+            if not parts: continue
+            cmd = parts[0].upper()
 
-            # --- 2. 系統指令處理 ---
-            if cmd == "EXIT":
-                sys.exit(0)
-            elif cmd == "APPEND":
-                is_append_mode = True
-                continue
-            elif cmd == "RUN":
-                if user_code_buffer:
-                    execute_ast("\n".join(user_code_buffer), evaluator)
-                    user_code_buffer.clear()
-                is_append_mode = False
-                continue
+            # --- 系統指令 ---
+            if cmd == "EXIT": sys.exit(0)
             elif cmd == "NEW":
                 evaluator.reset_state()
                 user_code_buffer.clear()
                 is_append_mode = False
                 print("Environment reset.")
-                continue
-
-            # --- 3. 代碼收集與自動執行 ---
-            user_code_buffer.append(line)
-            
-            # 如果不是手動 APPEND 模式，且括號剛好對齊，則嘗試執行
-            if not is_append_mode:
-                updated_content = "\n".join(user_code_buffer)
-                updated_open = updated_content.count('{')
-                updated_close = updated_content.count('}')
-                
-                # 情境 A: 寫完一個完整的區塊 { ... }[cite: 25, 29]
-                if updated_open > 0 and updated_open == updated_close:
-                    execute_ast(updated_content, evaluator)
+            elif cmd == "APPEND": is_append_mode = True
+            elif cmd == "RUN":
+                execute_ast("\n".join(user_code_buffer), evaluator)
+                is_append_mode = False
+            elif cmd == "LIST":
+                for i, c in enumerate(user_code_buffer): print(f"{i+1:3}: {c}")
+            elif cmd == "SAVE":
+                if len(parts) < 2: print("Usage: SAVE <filename>"); continue
+                with open(parts[1], "w") as f: f.write("\n".join(user_code_buffer))
+                print(f"Saved to {parts[1]}")
+            elif cmd == "LOAD":
+                if len(parts) < 2: print("Usage: LOAD <filename>"); continue
+                if os.path.exists(parts[1]):
+                    with open(parts[1], "r") as f: user_code_buffer = f.read().splitlines()
+                    print(f"Loaded {len(user_code_buffer)} lines.")
+                else: print("File not found.")
+            elif cmd == "VARS":
+                print("--- Global Variables ---")
+                for name, info in evaluator.global_scope.symbols.items():
+                    import memory
+                    val = memory.read(info['address'])
+                    print(f"{name}: {val} (at {info['address']})")
+            elif cmd == "TRACE":
+                evaluator.trace_enabled = not evaluator.trace_enabled
+                print(f"Trace mode: {'ON' if evaluator.trace_enabled else 'OFF'}")
+            else:
+                if not is_append_mode:
+                    user_code_buffer.append(line)
+                    execute_ast("\n".join(user_code_buffer), evaluator)
                     user_code_buffer.clear()
-                # 情境 B: 一般單行語句（且不含未閉合括號）
-                elif updated_open == 0 and updated_close == 0:
-                    execute_ast(updated_content, evaluator)
-                    user_code_buffer.clear()
+                else:
+                    user_code_buffer.append(line)
 
-        except KeyboardInterrupt:
-            print("\nUse EXIT to quit.")
-            user_code_buffer.clear()
         except Exception as e:
-            print(f"Runtime/Syntax Error: {e}")
-            user_code_buffer.clear()
+            print(f"Error: {e}")
+            if not is_append_mode: user_code_buffer.clear()
 
 def execute_ast(code, evaluator):
-    """將代碼交給 Lexer -> Parser -> Evaluator[cite: 28, 29]"""
+
     if not code.strip(): return
     lexer = Lexer(code)
     parser = Parser(lexer.tokens)
