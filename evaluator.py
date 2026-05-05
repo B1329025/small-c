@@ -76,6 +76,21 @@ class Evaluator:
             return current_val % rhs_val
         raise RuntimeError(f"未知的指定運算子: {op}")
     def visit_FunctionCallNode(self, node, scope):
+        if node.name == "sizeof_int":
+            arg_node = node.args[0]
+            if isinstance(arg_node, VarNode):
+                info = scope.lookup(arg_node.name)
+                # 檢查 SymbolTable 裡存的 'type' 字串
+                if info and info.get('type') != 'int':
+                    raise RuntimeError(f"型別錯誤: {arg_node.name} 不是 int 型別")
+                
+        if node.name == 'sizeof_char':
+            # 檢查傳入的是否為變數
+            if len(node.args) > 0 and isinstance(node.args[0], VarNode):
+                var_name = node.args[0].name
+                info = scope.lookup(var_name)
+                if info and info.get('type') != 'char':
+                    raise RuntimeError(f"型別錯誤: {var_name} 不是 char型別")
         # 1. 取得參數值 (計算每一個 arg 表達式)
         arg_values = [self.evaluate(arg, scope) for arg in node.args]
 

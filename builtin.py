@@ -145,8 +145,20 @@ class Builtins:
             memory.write(ptr + i, value)
         return ptr
 
-    def sizeof_int(self, args): return 4 # 固定為 4
-    def sizeof_char(self, args): return 1 # 固定為 1
+    def sizeof_int(self, args): 
+        if len(args)!=1:
+            raise RuntimeError("參數過多")
+        if not isinstance(args[0], int):
+            raise RuntimeError(f"型別錯誤: 預期 int，但得到 {type(args[0]).__name__}")
+        return 4
+    def sizeof_char(self, args):
+        if len(args) != 1:
+            raise RuntimeError("預期 1 個參數")
+        val = args[0]
+        if not isinstance(val, int) or not (0 <= val <= 255):
+            raise RuntimeError(f"型別錯誤: 預期 char (0-255), 但得到 {type(val).__name__} 值為 {val}")
+            
+        return 1 
 
     def atoi(self, args):
         s = self._get_string(args[0])
