@@ -202,27 +202,31 @@ def run_interactive_interpreter():
                     for name, info in vars_info.items():
                         print(f"{name:<10} {info['type']:<10} {info['value']}")
             elif cmd == "FUNCS":
-                # 直接在 main.py 實作，避免修改 evaluator.py 導致報錯
+                # 直接從 evaluator.functions 獲取已註冊的函式
                 if hasattr(evaluator, 'functions') and evaluator.functions:
                     print(f"{'Function Name':<20} {'Return Type':<15} {'Parameters'}")
-                    print("-" * 50)
+                    print("-" * 65)
                     for f_name, f_node in evaluator.functions.items():
-                        # 嘗試取得參數清單
-                        params = "()"
-                        if hasattr(f_node, 'params'):
-                            p_list = []
+                        # 根據 Parser[cite: 6] 的定義，params 是一個字典列表
+                        param_strs = []
+                        if hasattr(f_node, 'params') and f_node.params:
                             for p in f_node.params:
-                                # 根據你 Parser 的 Node 結構取得參數名稱與型別
-                                p_type = getattr(p, 'type_name', 'int')
-                                p_name = getattr(p, 'name', 'unknown')
-                                p_list.append(f"{p_type} {p_name}")
-                            params = f"({', '.join(p_list)})"
+                                # 從字典中提取資訊[cite: 6]
+                                p_type = p.get('type', 'int')
+                                p_name = p.get('name', '')
+                                p_is_ptr = p.get('is_ptr', False)
+                                
+                                # 組合顯示字串 (例如 int *arr)
+                                ptr_str = "*" if p_is_ptr else ""
+                                param_strs.append(f"{p_type} {ptr_str}{p_name}")
                         
+                        params_display = f"({', '.join(param_strs)})"
+                        
+                        # 取得回傳型別，若無則預設為 int[cite: 6]
                         ret_type = getattr(f_node, 'return_type', 'int')
-                        print(f"{f_name:<20} {ret_type:<15} {params}")
+                        print(f"{f_name:<20} {ret_type:<15} {params_display}")
                 else:
-                    print("No functions defined.")
-
+                    print("No functions defined. (Try running the code first)")
             # --- 3.3 系統指令 (實作區) ---
             elif cmd == "HELP":
                 if len(parts) > 1: # HELP <command>
