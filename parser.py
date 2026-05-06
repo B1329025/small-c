@@ -15,14 +15,17 @@ class Parser:
     def parse_program(self):
         nodes = []
         while self.current_token() and self.current_token().type != 'EOF':
-            if self.current_token().type in ('INT', 'CHAR','VOID'):
+            # 支援 INT, CHAR, VOID 作為宣告開頭
+            if self.current_token().type in ('INT', 'CHAR', 'VOID'):
                 node = self.declare_variable()
-                # 只有當它不是函式宣告時，才需要強制吃掉分號 (END)
+                # 如果回傳的是函式宣告，它後面接著的是 {}，不該吃分號
+                # 如果是變數或陣列宣告，則必須吃掉結尾的分號
                 if not isinstance(node, FunctionDeclarationNode):
                     self.eat('END')
             else:
                 node = self.parse_statement() 
-            nodes.append(node)
+            if node:
+                nodes.append(node)
         return nodes
 
     def eat(self, token_type):
@@ -30,7 +33,9 @@ class Parser:
         if token and token.type == token_type:
             self.pos += 1
             return token
-        raise SyntaxError(f"語法錯誤：預期 {token_type}，但得到 {token}")
+        
+        line = token.line if token else "EOF"
+        raise SyntaxError(f"Line {line}: 語法錯誤：預期 {token_type}，但得到 {token}")
 
     def parse_statement(self):
         token = self.current_token()
@@ -40,7 +45,8 @@ class Parser:
 
         if token.type in ('INT', 'CHAR','VOID'):
             node =self.declare_variable()
-            self.eat('END')
+            if not isinstance(node, FunctionDeclarationNode):
+                self.eat('END')
             return node 
         
         if token.type == 'PRINTF':
@@ -57,9 +63,10 @@ class Parser:
             block_node = BlockNode(statements)
             return block_node
 
-        if token.type in ('ID', 'TIMES'):
+        if token.type in ('ID', 'TIMES','LPAREN'):
             node = self.assign_value()
-            self.eat('END')
+            if self.current_token() and self.current_token().type == 'END':
+                self.eat('END')
             return node
 
         if token.type == 'IF':
@@ -86,7 +93,8 @@ class Parser:
             self.eat('RPAREN')
             self.eat('END') 
             return DoWhileNode(body, cond)
-        raise SyntaxError(f"無法解析的語句開頭: {token.type}")
+        line = token.line if token else "Unknown"
+        raise SyntaxError(f"Line {line}: 無法解析的語句開頭: {token.type}")
     def parse_block(self):
         self.eat('LBRACES')
         statements = []
@@ -119,31 +127,31 @@ class Parser:
 
     def declare_variable(self):
         start_line = self.current_token().line if self.current_token() else None
-        token = self.eat(self.current_token().type)
+        token = self.eat(self.current_token().type) # 吃掉 int/char/void
         var_base_type = token.value
         
+        # 1. 處理變數名稱前的指標星號 (例如 int *a)
         is_pointer = False
-        if self.current_token().type == 'TIMES':
+        if self.current_token() and self.current_token().type == 'TIMES':
             self.eat('TIMES')
             is_pointer = True
         
         var_name = self.eat('ID').value
         
-        if self.current_token().type == 'LPAREN':
+        # 2. 判斷是否為函式定義
+        if self.current_token() and self.current_token().type == 'LPAREN':
             self.eat('LPAREN')
             params = []
             if self.current_token() and self.current_token().type in ('INT', 'CHAR', 'VOID'):
                 while True:
-                    p_type = self.eat(self.current_token().type).value # 取得 int/char/void
-                    
-                    # 新增：支援參數中的指標 (例如 int *a)
+                    p_type = self.eat(self.current_token().type).value
+                    # 修正處：正確處理參數中的指標[cite: 11]
                     p_is_ptr = False
-                    if self.current_token().type == 'TIMES':
+                    if self.current_token() and self.current_token().type == 'TIMES':
                         self.eat('TIMES')
                         p_is_ptr = True
                     
                     p_name = self.eat('ID').value
-                    # 建議：將參數存為字典或包含型別的資訊，而非僅存名稱字串
                     params.append({'name': p_name, 'type': p_type, 'is_ptr': p_is_ptr})
                     
                     if self.current_token() and self.current_token().type == 'COMMA':
@@ -153,50 +161,36 @@ class Parser:
             self.eat('RPAREN')
             body = self.parse_statement()
             return FunctionDeclarationNode(var_name, params, body, lineno=start_line)
+        
+        # 3. 處理一般變數或陣列
         final_type_name = f"{var_base_type}_ptr" if is_pointer else var_base_type
         
-        # 處理陣列宣告: char a[7]
         if self.current_token() and self.current_token().type == 'LBRACKET':
             self.eat('LBRACKET')
             size_node = self.logical_or()
             self.eat('RBRACKET')
-            
             init_node = None
             if self.current_token() and self.current_token().type == 'assign':
                 self.eat('assign')
                 init_node = self.logical_or()
-            
-            # 僅回傳節點，不執行 define。注意：此處 size 傳入 size_node 給 Evaluator 計算
             return ArrayDeclarationNode(var_base_type, var_name, size_node, init_node)
-        
-        # 處理一般變數宣告: int a = 5
         else:
             init_node = None
             if self.current_token() and self.current_token().type == 'assign':
                 self.eat('assign')
                 init_node = self.logical_or()
-            
-            # 建立一個通用的宣告節點 (需在 nodes.py 定義或直接用一個標示位址的節點)
             return VarDeclarationNode(final_type_name, var_name, init_node)
         
     def assign_value(self):
-        if self.current_token().type == 'TIMES':
-            self.eat('TIMES')
-            left_node = UnaryOpNode('DEREF', self.logical_or())
-        else:
-            var_name = self.eat('ID').value
-            if self.current_token() and self.current_token().type == 'LBRACKET':
-                self.eat('LBRACKET')
-                index_node = self.logical_or()
-                self.eat('RBRACKET')
-                left_node =ArrayAccessNode(var_name,index_node)
-            else:
-                left_node =VarNode(var_name)
-        assign_ops =['assign','PA','MA','TA','DA','MOD_A']
+        # 關鍵修正：從 factor() 開始解析左值
+        left_node = self.factor()
+        assign_ops = ['assign', 'PA', 'MA', 'TA', 'DA', 'MOD_A']
+        # 檢查後面是否有賦值符號
         if self.current_token() and self.current_token().type in assign_ops:
-            op_token =self.eat(self.current_token().type)
-            right_node =self.logical_or()        
-            return AssignNode(left_node,op_token.type,right_node)    
+            op_token = self.eat(self.current_token().type)
+            right_node = self.logical_or()        
+            return AssignNode(left_node, op_token.type, right_node)    
+        
         return left_node
     def parse_printf(self):
         self.eat('PRINTF')
@@ -233,13 +227,17 @@ class Parser:
     def FOR(self):
         self.eat('FOR')
         self.eat('LPAREN')
-        # 修正：FOR 的 init 可以是宣告或賦值
-        init = self.declare_variable() if self.current_token().type in ('INT', 'CHAR') else self.assign_value()
-        self.eat('END')
+        # 1. 初始化部分
+        if self.current_token().type in ('INT', 'CHAR'):
+            init = self.declare_variable() 
+        else:
+            init = self.assign_value()
+        self.eat('END') 
         cond = self.logical_or()
-        self.eat('END')
+        self.eat('END') 
         upd = self.assign_value()
         self.eat('RPAREN')
+        
         body = self.parse_statement()
         return ForNode(init, cond, upd, body)
     def logical_or(self):
@@ -325,13 +323,21 @@ class Parser:
             self.eat('BIT_AND')
             return UnaryOpNode('ADDRESS_OF', self.factor())   
         return self.postfix()
+    # parser_35.py
     def postfix(self):
         node = self.primary()
         while self.current_token() and self.current_token().type == 'LBRACKET':
-            var_name = node.name if isinstance(node, VarNode) else None
+            if not isinstance(node, VarNode):
+                # 這裡很重要：如果 node 已經是 ArrayAccessNode，也要能繼續存取（多維陣列支援）
+                # 如果目前只支援一維，請確保傳給 ArrayAccessNode 的是字串
+                pass
+                
+            var_name = node.name if isinstance(node, VarNode) else node.name
             self.eat('LBRACKET')
             index_node = self.logical_or()
             self.eat('RBRACKET')
+            
+            # 建立節點
             node = ArrayAccessNode(var_name, index_node)
         return node
     def primary(self):

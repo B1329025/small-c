@@ -46,11 +46,19 @@ class Evaluator:
             })
         # 2. 加入使用者定義函式
         for name, node in self.functions.items():
+            # 修正處：node 是物件，使用 getattr 或直接存取屬性
+            params = []
+            if hasattr(node, 'params'):
+                for p in node.params:
+                    # 處理參數可能是字典或物件的情況
+                    p_name = p['name'] if isinstance(p, dict) else getattr(p, 'var_name', str(p))
+                    params.append({'type': 'int', 'name': p_name})
+
             func_list.append({
                 'name': name,
-                'type': 'int', # Small-C 預設 int
-                'params': [{'type': 'int', 'name': p} for p in node.params],
-                'line_num': node.lineno if hasattr(node, 'lineno') else "??",
+                'type': 'int', 
+                'params': params,
+                'line_num': getattr(node, 'lineno', "??"),
                 'is_builtin': False
             })
         return func_list
@@ -105,15 +113,19 @@ class Evaluator:
         main_scope = memory.SymbolTable(parent=self.global_scope)
         return self.evaluate(main_node.body, main_scope)
     def calculate_compound(self, current_val, rhs_val, op):
-        if op == 'PA':      return current_val + rhs_val
-        if op == 'TA':      return current_val * rhs_val
-        if op == 'MA':      return current_val - rhs_val
+        # 確保初始值為 0 而非 None
+        c_val = current_val if current_val is not None else 0
+        r_val = rhs_val if rhs_val is not None else 0
+        
+        if op == 'PA':      return c_val + r_val
+        if op == 'TA':      return c_val * r_val
+        if op == 'MA':      return c_val - r_val
         if op == 'DA':
-            if rhs_val == 0: raise ZeroDivisionError("分母不可是零")
-            return int(current_val / rhs_val)
+            if r_val == 0: raise ZeroDivisionError("分母不可是零")
+            return int(c_val / r_val)
         if op == 'MOD_A':   
-            if rhs_val == 0: raise ZeroDivisionError("分母不可是零")
-            return current_val % rhs_val
+            if r_val == 0: raise ZeroDivisionError("分母不可是零")
+            return c_val % r_val
         raise RuntimeError(f"未知的指定運算子: {op}")
     def visit_FunctionCallNode(self, node, scope):
         if node.name == "sizeof_int":
@@ -181,40 +193,37 @@ class Evaluator:
         if self.trace_enabled:
             print(f"[Line {node.lineno}] {node.source_code}")
     def execute_user_function(self, func_node, arg_values):
-        # 1. 建立函式獨立的作用域，父層級為全域作用域
+        # 建立函式的獨立作用域 (parent 設為 global_scope 符合 C 規範)
         func_scope = memory.SymbolTable(parent=self.global_scope)
         
-        # 2. 參數綁定：將呼叫時的數值賦予參數變數
         for i, param_data in enumerate(func_node.params):
-            val = arg_values[i]
+            val = arg_values[i]  # 這裡可能是數值 (int) 或位址 (指向陣列)
             
-            # 修正：根據 Parser 解析出的格式（字典或字串）提取名稱與型別
+            # 取得參數名稱與型別
             if isinstance(param_data, dict):
                 p_name = param_data['name']
-                # 如果是指標參數，型別標註為 int_ptr 或對應型別[cite: 11]
                 p_type = f"{param_data['type']}_ptr" if param_data.get('is_ptr') else param_data['type']
             else:
-                p_name = param_data
-                p_type = 'int' # 預設預設值
+                p_name = getattr(param_data, 'var_name', str(param_data))
+                p_type = getattr(param_data, 'var_type', 'int')
 
-            # 分配記憶體空間並寫入傳入的數值[cite: 14]
-            addr = memory.allocate_memory(1)
-            memory.write(addr, val)
+            # --- 關鍵修正：為參數分配真實記憶體位址 ---
+            # 即使是參數，它在 stack 上也應該有自己的位置
+            addr = memory.allocate_memory(1) 
+            memory.write(addr, val)  # 將傳入的「值」或「陣列首位址」存入該位置
             
-            # 在新作用域中定義該參數，使用修正後的 p_name 與 p_type[cite: 14]
             func_scope.define(p_name, {
-                'address': addr, 
+                'address': addr,     # 現在 address 不再是 None 了
                 'type': p_type, 
-                'size': 1, 
+                'size': 1,
+                'is_param': True,    
                 'initialized': True 
             })
         
-        # 3. 執行函式主體並捕捉 ReturnException[cite: 14]
         try:
             return self.evaluate(func_node.body, func_scope)
         except ReturnException as e:
-            # 傳回捕捉到的數值[cite: 14]
-            return e.value      
+            return e.value
 
     def evaluate(self,node,scope):
             if node is None:  
@@ -223,16 +232,14 @@ class Evaluator:
                 if isinstance(node, (AssignNode, FunctionCallNode, IfNode, WhileNode, ForNode, PrintNode, ReturnNode)):
                     print(f"{{line {node.lineno}}} {type(node).__name__}")
             if isinstance(node, VarDeclarationNode):
-                # 1. 分配 1 個單位的記憶體空間
                 addr = memory.allocate_memory(1)
-                # 2. 如果有初始值就計算它，否則預設為 0
+                # 計算初始值，若無則預設為 0
                 val = self.evaluate(node.init_node, scope) if node.init_node else 0
                 memory.write(addr, val)
-                # 3. 將變數定義在當前的作用域 (scope) 中
                 scope.define(node.var_name, {
                     'address': addr, 'type': node.var_type, 'size': 1, 'initialized': True 
                 })
-                return val
+                return val  # 修正：必須回傳 val 而非 None
             # 在 evaluator_19.py 的 evaluate 方法內
             if isinstance(node, ArrayDeclarationNode):
                 # 1. 計算陣列大小（執行 size_node 得到數值）
@@ -264,50 +271,72 @@ class Evaluator:
                 raise ReturnException(val)
             if isinstance(node ,NumberNode):
                 return node.value
+            # 在 evaluate 方法內的 if isinstance(node, VarNode): 區塊中
             if isinstance(node, VarNode):
                 info = scope.lookup(node.name)
                 if not info: raise NameError(f"未定義: {node.name}")
-                if info.get('type') == 'array': return info['address']
-                return memory.read(info['address'])
+                
+                # 情況 A：非參數的陣列宣告 (例如 main 裡的 int data[8])
+                # 這類變數的 address 直接就是資料起始點
+                if info.get('type') == 'array' and not info.get('is_param'): 
+                    return info['address']
+                
+                # 情況 B：一般變數 或 參數（指標）
+                # 因為 execute_user_function 已分配空間，這裡一律從記憶體讀取內容
+                val = memory.read(info['address'])
+                return val if val is not None else 0
             if isinstance(node, AssignNode):
                 target_addr = None
-                info = None
-                if isinstance(node.left, UnaryOpNode) and node.left.op == 'DEREF':
-                    target_addr = self.evaluate(node.left.operand, scope)
-                elif isinstance(node.left, ArrayAccessNode):
+                
+                if isinstance(node.left, ArrayAccessNode):
+                    # 修正處：必須與 ArrayAccessNode 的讀取邏輯一致
                     info = scope.lookup(node.left.name)
-                    if not info: raise NameError(f"未定義陣列 {node.left.name}")
+                    if not info: raise NameError(f"未定義陣列: {node.left.name}")
+                    
+                    # 取得基底位址：若是參數或指標，要從記憶體讀出其指向的位址
+                    if info.get('is_param') or "ptr" in str(info.get('type')):
+                        base_addr = memory.read(info['address'])
+                    else:
+                        base_addr = info['address']
+                        
                     idx = self.evaluate(node.left.index_node, scope)
-                    # 這裡必須與 ArrayAccessNode 的邏輯統一
-                    target_addr = info['address'] + idx
+                    target_addr = base_addr + (int(idx) if idx is not None else 0)
+                    
                 elif isinstance(node.left, VarNode):
                     info = scope.lookup(node.left.name)
                     if not info: raise NameError(f"未定義變數 {node.left.name}")
                     target_addr = info['address']
+                elif isinstance(node.left, UnaryOpNode) and node.left.op == 'DEREF':
+                    # 處理 *p = 10
+                    target_addr = self.evaluate(node.left.operand, scope)
 
+                # 計算右值並寫回[cite: 31]
                 rhs_val = self.evaluate(node.right, scope)
+                rhs_val = int(rhs_val) if rhs_val is not None else 0
                 
-                # 處理字串賦值
-                if info and info.get('type') == 'array' and isinstance(node.right, StringNode):
-                    for i, c in enumerate(node.right.value):
-                        memory.write(info['address'] + i, ord(c))
-                    memory.write(info['address'] + len(node.right.value), 0)
-                    info['initialized'] = True
-                    return rhs_val
-
-                final_val = rhs_val
+                # 處理 +=, -= 等複合運算
                 if node.op != 'assign':
                     cur = memory.read(target_addr)
-                    final_val = self.calculate_compound(cur, rhs_val, node.op)
+                    rhs_val = self.calculate_compound(cur or 0, rhs_val, node.op)
                 
-                memory.write(target_addr, final_val)
-                if info: info['initialized'] = True
-                return final_val
+                memory.write(target_addr, int(rhs_val))
+                return rhs_val
             if isinstance(node ,UnaryOpNode):
                 if node.op == 'DEREF':
-                    return memory.read(self.evaluate(node.operand, scope))
+                    target = self.evaluate(node.operand, scope)
+                    return memory.read(target)
                 if node.op == 'ADDRESS_OF':
-                    return scope.lookup(node.operand.name)['address']
+                    if isinstance(node.operand, VarNode):
+                        return scope.lookup(node.operand.name)['address']
+                    if isinstance(node.operand, ArrayAccessNode):
+                        # 這裡的邏輯要參考你 ArrayAccessNode 的讀取邏輯
+                        info = scope.lookup(node.operand.name)
+                        if info.get('is_param') or "ptr" in str(info.get('type')):
+                            base_addr = memory.read(info['address'])
+                        else:
+                            base_addr = info['address']
+                        index = self.evaluate(node.operand.index_node, scope)
+                        return base_addr + (int(index) if index is not None else 0)
                 if node.op =='NEGATIVE':
                     val =self.evaluate(node.operand,scope)
                     return -val
@@ -324,7 +353,7 @@ class Evaluator:
                     return self.evaluate(node.else_block, scope)
                 return None      
             if isinstance(node, BlockNode):
-                res = None
+                res = 0
                 block_scope = memory.SymbolTable(parent=scope)
                 for s in node.statements:
                     res = self.evaluate(s, block_scope)
@@ -371,75 +400,82 @@ class Evaluator:
             if isinstance(node, StringNode):
                 return self.visit_StringNode(node)
             if isinstance(node, ArrayAccessNode):
+                 # 直接查找符號表取得位址資訊
                 info = scope.lookup(node.name)
-                if not info:
-                    raise NameError(f"未定義陣列: {node.name}")
+                if not info: raise NameError(f"未定義陣列: {node.name}")
                 
-                base_addr = info['address']
-                size = info['size']
+                if info.get('is_param') or "ptr" in str(info.get('type')):
+                    # 參數型陣列：內容存的是指向別處的位址[cite: 31]
+                    base_addr = memory.read(info['address'])
+                else:
+                    # 一般宣告陣列：address 就是首位址[cite: 32]
+                    base_addr = info['address']
+                    
                 index = self.evaluate(node.index_node, scope)
+                index = int(index) if index is not None else 0
                 
-  
-                if index < 0 or index >= size:
-                    raise RuntimeError(f"索引越界！陣列 {node.name} 長度為 {size}，但存取了索引 {index}")
-                
-                # 核心邏輯：位址計算與指標算術保持一致
-                return memory.read(base_addr + index)
+                val = memory.read(base_addr + index)
+                return val if val is not None else 0
             
             if isinstance(node, PrintNode):
                 # 1. 先計算所有參數的值
                 arg_values = [self.evaluate(arg, scope) for arg in node.args]
                 return self.builtins.printf(node.format_string, arg_values)
             if isinstance(node, BinOpNode):
-                # --- 邏輯運算：特殊處理（短路） ---
+                # --- 1. 處理具有短路特性的邏輯運算 (必須先做，不能先 evaluate 右邊) ---
                 if node.op == 'LOGICAL_AND':
                     left_val = self.evaluate(node.left, scope)
-                    if left_val == 0:return 0  # 左邊為假，右邊連 evaluate 都不呼叫
-                    return 1 if self.evaluate(node.right, scope) else 0
+                    left_val = left_val if left_val is not None else 0
+                    if left_val == 0: return 0
+                    right_val = self.evaluate(node.right, scope)
+                    right_val = right_val if right_val is not None else 0
+                    return 1 if right_val != 0 else 0
 
                 if node.op == 'LOGICAL_OR':
                     left_val = self.evaluate(node.left, scope)
-                    if left_val != 0: return 1  # 左邊為真，直接短路回傳真
-                    return 1 if self.evaluate(node.right, scope) else 0
-                
-                left_val = self.evaluate(node.left, scope)
-                right_val = self.evaluate(node.right, scope)
+                    left_val = left_val if left_val is not None else 0
+                    if left_val != 0: return 1
+                    right_val = self.evaluate(node.right, scope)
+                    right_val = right_val if right_val is not None else 0
+                    return 1 if right_val != 0 else 0
 
+                # --- 2. 一般運算：計算數值並強制修正 NoneType ---
+                # 注意：這裡只呼叫一次 evaluate，避免副作用
+                left_raw = self.evaluate(node.left, scope)
+                right_raw = self.evaluate(node.right, scope)
                 
+                left_val = int(left_raw) if left_raw is not None else 0
+                right_val = int(right_raw) if right_raw is not None else 0
+
+                # --- 3. 執行具體運算 (含指標邏輯) ---
                 if node.op == 'PLUS': 
-                    if self.is_pointer(node.left, scope):
-                        # 指標 + 整數：位址直接加上數值（單位一致）
-                        return left_val + right_val 
-                    if self.is_pointer(node.right, scope):
-                        # 整數 + 指標
-                        return right_val + left_val 
+                    # 這裡是為了支援指標運算：address + offset
                     return left_val + right_val
-                if node.op == 'TIMES': return left_val * right_val
-                if node.op == 'DIVIDE':
-                    if right_val ==0: raise ZeroDivisionError("除以零錯誤")
-                    return int(left_val / right_val)
+                
                 if node.op == 'MINUS':
-                    left_is_ptr = self.is_pointer(node.left, scope)
-                    right_is_ptr = self.is_pointer(node.right, scope)
-                    if left_is_ptr and right_is_ptr:
-                        # 指標 - 指標：回傳位址差（元素個數）
-                        return (left_val - right_val) 
-                    if left_is_ptr:
-                        # 指標 - 整數
-                        return left_val - right_val 
+                    # 這裡是為了支援指標相減或 address - offset
                     return left_val - right_val
+                    
+                if node.op == 'TIMES':  return left_val * right_val
+                if node.op == 'DIVIDE':
+                    if right_val == 0: raise ZeroDivisionError("除以零錯誤")
+                    return int(left_val / right_val)
                 if node.op == 'MOD': 
-                    if right_val ==0: raise ZeroDivisionError("除以零錯誤")
-                    return left_val - (int(left_val / right_val) * right_val)
-                if node.op == 'XOR': return left_val^right_val
-                if node.op == 'OR': return left_val | right_val
-                if node.op == 'rs': return left_val >> right_val
-                if node.op == 'ls': return left_val << right_val
-                if node.op == 'E': return 1 if left_val == right_val else 0
-                if node.op == 'LE': return 1 if left_val <= right_val else 0
-                if node.op == 'GE': return 1 if left_val >= right_val else 0
-                if node.op == 'L': return 1 if left_val < right_val else 0
-                if node.op == 'G': return 1 if left_val > right_val else 0
+                    if right_val == 0: raise ZeroDivisionError("除以零錯誤")
+                    return left_val % right_val
+                
+                # 位元運算
+                if node.op == 'BIT_AND': return left_val & right_val
+                if node.op == 'OR':      return left_val | right_val
+                if node.op == 'XOR':     return left_val ^ right_val
+                if node.op == 'ls':      return left_val << right_val
+                if node.op == 'rs':      return left_val >> right_val
+                
+                # 比較運算：現在 left_val 與 right_val 確保都是 int
+                if node.op == 'E':  return 1 if left_val == right_val else 0
                 if node.op == 'NE': return 1 if left_val != right_val else 0
-                if node.op == 'BIT_AND':return left_val & right_val             
+                if node.op == 'L':  return 1 if left_val < right_val else 0
+                if node.op == 'G':  return 1 if left_val > right_val else 0
+                if node.op == 'LE': return 1 if left_val <= right_val else 0
+                if node.op == 'GE': return 1 if left_val >= right_val else 0         
             raise RuntimeError(f"未知的節點類型：{type(node)}")
