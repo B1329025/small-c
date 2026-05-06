@@ -195,12 +195,33 @@ def run_interactive_interpreter():
 
             elif cmd == "VARS":
                 vars_info = evaluator.get_global_variables()
-                print(f"{'Name':<10} {'Type':<10} {'Value'}")
-                for name, info in vars_info.items():
-                    print(f"{name:<10} {info['type']:<10} {info['value']}")
-
+                if not vars_info:
+                    print("No global variables defined. (Note: VARS only shows global scope)")
+                else:
+                    print(f"{'Name':<10} {'Type':<10} {'Value'}")
+                    for name, info in vars_info.items():
+                        print(f"{name:<10} {info['type']:<10} {info['value']}")
             elif cmd == "FUNCS":
-                evaluator.display_funcs() # 呼叫 Evaluator 內的函式列表顯示
+                # 直接在 main.py 實作，避免修改 evaluator.py 導致報錯
+                if hasattr(evaluator, 'functions') and evaluator.functions:
+                    print(f"{'Function Name':<20} {'Return Type':<15} {'Parameters'}")
+                    print("-" * 50)
+                    for f_name, f_node in evaluator.functions.items():
+                        # 嘗試取得參數清單
+                        params = "()"
+                        if hasattr(f_node, 'params'):
+                            p_list = []
+                            for p in f_node.params:
+                                # 根據你 Parser 的 Node 結構取得參數名稱與型別
+                                p_type = getattr(p, 'type_name', 'int')
+                                p_name = getattr(p, 'name', 'unknown')
+                                p_list.append(f"{p_type} {p_name}")
+                            params = f"({', '.join(p_list)})"
+                        
+                        ret_type = getattr(f_node, 'return_type', 'int')
+                        print(f"{f_name:<20} {ret_type:<15} {params}")
+                else:
+                    print("No functions defined.")
 
             # --- 3.3 系統指令 (實作區) ---
             elif cmd == "HELP":
