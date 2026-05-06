@@ -132,18 +132,26 @@ class Parser:
         if self.current_token().type == 'LPAREN':
             self.eat('LPAREN')
             params = []
-            # 解析參數清單
-            if self.current_token() and self.current_token().type in ('INT', 'CHAR','VOID'):
+            if self.current_token() and self.current_token().type in ('INT', 'CHAR', 'VOID'):
                 while True:
-                    self.eat(self.current_token().type) # 吃掉 int/char
-                    p_name = self.eat('ID').value       # 抓取名稱 n
-                    params.append(p_name)
+                    p_type = self.eat(self.current_token().type).value # 取得 int/char/void
+                    
+                    # 新增：支援參數中的指標 (例如 int *a)
+                    p_is_ptr = False
+                    if self.current_token().type == 'TIMES':
+                        self.eat('TIMES')
+                        p_is_ptr = True
+                    
+                    p_name = self.eat('ID').value
+                    # 建議：將參數存為字典或包含型別的資訊，而非僅存名稱字串
+                    params.append({'name': p_name, 'type': p_type, 'is_ptr': p_is_ptr})
+                    
                     if self.current_token() and self.current_token().type == 'COMMA':
                         self.eat('COMMA')
                     else:
                         break
             self.eat('RPAREN')
-            body = self.parse_statement() # 解析函式主體 {}
+            body = self.parse_statement()
             return FunctionDeclarationNode(var_name, params, body, lineno=start_line)
         final_type_name = f"{var_base_type}_ptr" if is_pointer else var_base_type
         

@@ -181,24 +181,39 @@ class Evaluator:
         if self.trace_enabled:
             print(f"[Line {node.lineno}] {node.source_code}")
     def execute_user_function(self, func_node, arg_values):
-        # 1. 建立函式獨立的作用域
+        # 1. 建立函式獨立的作用域，父層級為全域作用域
         func_scope = memory.SymbolTable(parent=self.global_scope)
         
         # 2. 參數綁定：將呼叫時的數值賦予參數變數
-        for i, param_name in enumerate(func_node.params):
+        for i, param_data in enumerate(func_node.params):
             val = arg_values[i]
-            # 分配記憶體並寫入值
+            
+            # 修正：根據 Parser 解析出的格式（字典或字串）提取名稱與型別
+            if isinstance(param_data, dict):
+                p_name = param_data['name']
+                # 如果是指標參數，型別標註為 int_ptr 或對應型別[cite: 11]
+                p_type = f"{param_data['type']}_ptr" if param_data.get('is_ptr') else param_data['type']
+            else:
+                p_name = param_data
+                p_type = 'int' # 預設預設值
+
+            # 分配記憶體空間並寫入傳入的數值[cite: 14]
             addr = memory.allocate_memory(1)
             memory.write(addr, val)
-            # 在新作用域定義該參數
-            func_scope.define(param_name, {
-                'address': addr, 'type': 'int', 'size': 1, 'initialized': True 
+            
+            # 在新作用域中定義該參數，使用修正後的 p_name 與 p_type[cite: 14]
+            func_scope.define(p_name, {
+                'address': addr, 
+                'type': p_type, 
+                'size': 1, 
+                'initialized': True 
             })
         
-        # 3. 執行主體並捕捉回傳值
+        # 3. 執行函式主體並捕捉 ReturnException[cite: 14]
         try:
             return self.evaluate(func_node.body, func_scope)
         except ReturnException as e:
+            # 傳回捕捉到的數值[cite: 14]
             return e.value      
 
     def evaluate(self,node,scope):
