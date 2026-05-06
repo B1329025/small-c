@@ -237,7 +237,27 @@ def run_interactive_interpreter():
                 sys.exit(0)
             
             else:
-                print(f"Unknown command: {cmd}")
+                # 這一步讓你可以直接輸入 int x = 10; 或 printf(...)
+                try:
+                    # 建立 Lexer 與 Parser 處理單行內容
+                    lexer = Lexer(line)
+                    parser = Parser(lexer.tokens)
+                    
+                    # 使用 execute_top_level 或是單純 evaluate 這些節點
+                    nodes = parser.parse_program()
+                    
+                    for node in nodes:
+                        # 這裡要直接在 evaluator 的當前狀態下執行
+                        # 如果是變數宣告，它會存入 evaluator.global_scope
+                        # 如果是 printf，它會直接印出結果
+                        evaluator.evaluate(node, evaluator.global_scope)
+                    
+                    # 同步將成功執行的行加入緩衝區 (可選，模擬圖中行為)
+                    user_code_buffer.append(line)
+                    is_modified = True
+                    
+                except Exception as eval_e:
+                    print(f"Error: {eval_e}")
             
         except Exception as e:
             print(f"Error: {e}")
