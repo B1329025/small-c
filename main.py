@@ -38,6 +38,26 @@ def run_interactive_interpreter():
     pending_lines = [] 
     brace_level = 0 
 
+    # 建立說明文件字典供 HELP <command> 使用
+    help_docs = {
+        "LOAD": "LOAD <filename>: 從指定檔案載入原始碼。會覆蓋目前緩衝區。",
+        "SAVE": "SAVE <filename>: 將目前緩衝區內容儲存至檔案。",
+        "LIST": "LIST [n|n1-n2]: 列出緩衝區內容。可指定行號或範圍。",
+        "EDIT": "EDIT <n>: 編輯第 n 行內容。",
+        "DELETE": "DELETE <n|n1-n2>: 刪除指定行或範圍。",
+        "INSERT": "INSERT <n>: 在第 n 行前插入程式碼，輸入 '.' 結束。",
+        "APPEND": "APPEND: 在緩衝區末尾增加程式碼，輸入 '.' 結束。",
+        "NEW": "NEW: 清除緩衝區並重置解譯器狀態。",
+        "RUN": "RUN: 執行目前緩衝區中的程式。",
+        "CHECK": "CHECK: 進行語法檢查但不執行。",
+        "TRACE": "TRACE <ON|OFF>: 開啟或關閉執行追蹤模式。",
+        "VARS": "VARS: 顯示所有全域變數及其當前值。",
+        "FUNCS": "FUNCS: 列出所有已定義的函式。",
+        "CLEAR": "CLEAR: 清除終端機畫面。",
+        "HELP": "HELP [command]: 顯示指令摘要或特定指令的詳細說明。",
+        "EXIT": "EXIT 或 QUIT: 結束解譯器環境。"
+    }
+
     print("Small-C Interactive Interpreter v3.0")
     print("System Software Final Project, Spring 2026")
     
@@ -181,6 +201,20 @@ def run_interactive_interpreter():
 
             elif cmd == "FUNCS":
                 evaluator.display_funcs() # 呼叫 Evaluator 內的函式列表顯示
+
+            # --- 3.3 系統指令 (實作區) ---
+            elif cmd == "HELP":
+                if len(parts) > 1: # HELP <command>
+                    target = parts[1].upper()
+                    print(help_docs.get(target, f"Unknown command: {target}"))
+                else: # HELP (摘要)
+                    print("Available commands:")
+                    print(", ".join(sorted(help_docs.keys())))
+                    print("Type 'HELP <command>' for detailed info.")
+
+            elif cmd == "CLEAR":
+                # 執行系統清屏操作 (Windows: cls, Unix: clear)
+                os.system('cls' if os.name == 'nt' else 'clear')
 
             elif cmd == "EXIT" or cmd == "QUIT":
                 if is_modified:
