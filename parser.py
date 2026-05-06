@@ -15,7 +15,7 @@ class Parser:
     def parse_program(self):
         nodes = []
         while self.current_token() and self.current_token().type != 'EOF':
-            if self.current_token().type in ('INT', 'CHAR'):
+            if self.current_token().type in ('INT', 'CHAR','VOID'):
                 node = self.declare_variable()
                 # 只有當它不是函式宣告時，才需要強制吃掉分號 (END)
                 if not isinstance(node, FunctionDeclarationNode):
@@ -38,7 +38,7 @@ class Parser:
             self.eat('END')
             return None
 
-        if token.type in ('INT', 'CHAR'):
+        if token.type in ('INT', 'CHAR','VOID'):
             node =self.declare_variable()
             self.eat('END')
             return node 
@@ -133,7 +133,7 @@ class Parser:
             self.eat('LPAREN')
             params = []
             # 解析參數清單
-            if self.current_token() and self.current_token().type in ('INT', 'CHAR'):
+            if self.current_token() and self.current_token().type in ('INT', 'CHAR','VOID'):
                 while True:
                     self.eat(self.current_token().type) # 吃掉 int/char
                     p_name = self.eat('ID').value       # 抓取名稱 n

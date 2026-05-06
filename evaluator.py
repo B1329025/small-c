@@ -14,6 +14,46 @@ class Evaluator:
         self.builtins = Builtins()
         self.trace_enabled = False
         self.current_scope = self.global_scope
+    def set_trace(self, enabled):
+        """開啟或關閉語句追蹤模式"""
+        self.trace_enabled = enabled
+
+    def get_global_variables(self):
+        """回傳全域變數狀態以供 VARS 指令顯示"""
+        # 遍歷全域符號表，並讀取記憶體中的實際數值
+        vars_info = {}
+        for name, info in self.global_scope.symbols.items():
+            # 讀取當前記憶體中的值
+            current_val = memory.read(info['address']) if info.get('address') is not None else None
+            
+            vars_info[name] = {
+                'type': info.get('type'),
+                'value': current_val,
+                'address': info.get('address'),
+                'is_array': info.get('type') == 'array',
+                'is_pointer': 'ptr' in str(info.get('type'))
+            }
+        return vars_info
+
+    def get_defined_functions(self):
+        """回傳所有定義的函式以供 FUNCS 指令顯示"""
+        func_list = []
+        # 1. 加入內建函式
+        for name in self.builtins.mapping:
+            func_list.append({
+                'name': name, 'type': 'int', 'params': [{'type': '...', 'name': '...'}],
+                'line_num': 0, 'is_builtin': True
+            })
+        # 2. 加入使用者定義函式
+        for name, node in self.functions.items():
+            func_list.append({
+                'name': name,
+                'type': 'int', # Small-C 預設 int
+                'params': [{'type': 'int', 'name': p} for p in node.params],
+                'line_num': node.lineno if hasattr(node, 'lineno') else "??",
+                'is_builtin': False
+            })
+        return func_list
     def reset_state(self):
         self.functions = {}
         self.global_scope = memory.SymbolTable(parent=None)
@@ -164,7 +204,9 @@ class Evaluator:
     def evaluate(self,node,scope):
             if node is None:  
                 return None
-            
+            if self.trace_enabled and hasattr(node, 'lineno'):
+                if isinstance(node, (AssignNode, FunctionCallNode, IfNode, WhileNode, ForNode, PrintNode, ReturnNode)):
+                    print(f"{{line {node.lineno}}} {type(node).__name__}")
             if isinstance(node, VarDeclarationNode):
                 # 1. 分配 1 個單位的記憶體空間
                 addr = memory.allocate_memory(1)
