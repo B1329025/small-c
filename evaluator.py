@@ -9,6 +9,7 @@ class ReturnException(Exception):
 class Evaluator:
     
     def __init__(self):
+        self.functions = {}
         self.global_scope = memory.SymbolTable(parent=None)
         self.builtins = Builtins()
         self.trace_enabled = False
@@ -151,10 +152,12 @@ class Evaluator:
 
         # 3. 檢查是否為使用者定義的函式 (如 main, swap 等)
         func_node = scope.lookup_function(node.name)
+        if func_node is None:
+            # 這裡要處理自定義函式的 Scope 跳轉與參數綁定
+            func_node = self.functions.get(node.name)
         if func_node:
             # 這裡要處理自定義函式的 Scope 跳轉與參數綁定
             return self.execute_user_function(func_node, arg_values)
-
         raise NameError(f"Runtime Error: Undefined function '{node.name}'")
     def visit_StringNode(self, node):
         # 1. 計算需要分配的空間：字串長度 + 1 (結尾符 \0)
@@ -239,6 +242,11 @@ class Evaluator:
                 })
                 return val  # 修正：必須回傳 val 而非 None
             # 在 evaluator_19.py 的 evaluate 方法內
+            if isinstance(node, FunctionDeclarationNode):
+                # 將函式節點儲存到 evaluator 的 functions 字典中，以函式名稱作為 Key
+                self.functions[node.name] = node
+                # 宣告函式不需要回傳任何執行結果，直接回傳 None
+                return None
             if isinstance(node, ArrayDeclarationNode):
                 # 1. 計算陣列大小（執行 size_node 得到數值）
                 size = self.evaluate(node.size_node, scope)

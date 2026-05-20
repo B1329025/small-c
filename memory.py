@@ -8,7 +8,7 @@ class SymbolTable:
         self.parent = parent # 指向上層作用域
 
     def define(self, name, info):
-        if name in self.symbols:
+        if name in self.symbols or name in self.functions:
             raise NameError(f"Runtime Error: 變數 '{name}' 已在此作用域宣告過")
         self.symbols[name] = info
         
@@ -21,7 +21,7 @@ class SymbolTable:
     # ── 函式 API────────────────
     def define_function(self, name, node):
         """註冊一個使用者定義函式。不允許在同一個環境重複定義。"""
-        if name in self.functions:
+        if name in self.functions or name in self.symbols:
             raise NameError(f"Runtime Error: 函式 '{name}' 已重複定義")
         self.functions[name] = node
 
