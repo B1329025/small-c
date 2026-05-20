@@ -183,12 +183,12 @@ class Parser:
         
     def assign_value(self):
         # 關鍵修正：從 factor() 開始解析左值
-        left_node = self.factor()
+        left_node = self.logical_or()
         assign_ops = ['assign', 'PA', 'MA', 'TA', 'DA', 'MOD_A']
         # 檢查後面是否有賦值符號
         if self.current_token() and self.current_token().type in assign_ops:
             op_token = self.eat(self.current_token().type)
-            right_node = self.logical_or()        
+            right_node = self.assign_value()        
             return AssignNode(left_node, op_token.type, right_node)    
         
         return left_node

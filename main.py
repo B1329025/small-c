@@ -259,10 +259,7 @@ def run_interactive_interpreter():
                 except Exception as eval_e:
                     print(f"Error: {eval_e}")
             
-        except KeyboardInterrupt:
-            print("\nInterrupted.")
-            pending_lines = []
-            brace_level = 0
+        
         except EOFError:
             break
         except Exception as e:
