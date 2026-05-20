@@ -38,19 +38,24 @@ class Evaluator:
     def get_defined_functions(self):
         """回傳所有定義的函式以供 FUNCS 指令顯示"""
         func_list = []
+        seen_functions = set()  # 用於避免 REPL 緩衝區與全域符號表重複計入
+
         # 1. 加入內建函式
         for name in self.builtins.mapping:
             func_list.append({
                 'name': name, 'type': 'int', 'params': [{'type': '...', 'name': '...'}],
                 'line_num': 0, 'is_builtin': True
             })
-        # 2. 加入使用者定義函式
+            seen_functions.add(name)
+
+        # 2. 加入使用者定義函式（來源 A：從全域符號表 global_scope 讀取）
         for name, node in self.global_scope.get_all_functions().items():
-            # 修正處：node 是物件，使用 getattr 或直接存取屬性
+            if name in seen_functions:
+                continue
+            
             params = []
             if hasattr(node, 'params'):
                 for p in node.params:
-                    # 處理參數可能是字典或物件的情況
                     p_name = p['name'] if isinstance(p, dict) else getattr(p, 'var_name', str(p))
                     params.append({'type': 'int', 'name': p_name})
 
@@ -61,6 +66,28 @@ class Evaluator:
                 'line_num': getattr(node, 'lineno', "??"),
                 'is_builtin': False
             })
+            seen_functions.add(name)
+
+        # 3. 加入使用者定義函式（來源 B：從 REPL 即時模式快取 self.functions 讀取）
+        for name, node in self.functions.items():
+            if name in seen_functions:
+                continue
+                
+            params = []
+            if hasattr(node, 'params'):
+                for p in node.params:
+                    p_name = p['name'] if isinstance(p, dict) else getattr(p, 'var_name', str(p))
+                    params.append({'type': 'int', 'name': p_name})
+
+            func_list.append({
+                'name': name,
+                'type': 'int', 
+                'params': params,
+                'line_num': getattr(node, 'lineno', "??"),
+                'is_builtin': False
+            })
+            seen_functions.add(name)
+
         return func_list
     def reset_state(self):
         self.global_scope = memory.SymbolTable(parent=None)
@@ -128,20 +155,16 @@ class Evaluator:
         raise RuntimeError(f"未知的指定運算子: {op}")
     def visit_FunctionCallNode(self, node, scope):
         if node.name == "sizeof_int":
-            arg_node = node.args[0]
-            if isinstance(arg_node, VarNode):
-                info = scope.lookup(arg_node.name)
-                # 檢查 SymbolTable 裡存的 'type' 字串
-                if info and info.get('type') != 'int':
-                    raise RuntimeError(f"型別錯誤: {arg_node.name} 不是 int 型別")
+            if len(node.args) != 0:
+                raise RuntimeError(f"錯誤：{node.name}() 不需要也不允許輸入任何參數")
+            # 既然沒有參數，直接呼叫內建函式（空載），不傳入任何 argument 列表
+            return self.builtins.mapping[node.name]()
                 
         if node.name == 'sizeof_char':
-            # 檢查傳入的是否為變數
-            if len(node.args) > 0 and isinstance(node.args[0], VarNode):
-                var_name = node.args[0].name
-                info = scope.lookup(var_name)
-                if info and info.get('type') != 'char':
-                    raise RuntimeError(f"型別錯誤: {var_name} 不是 char型別")
+            if len(node.args) != 0:
+                raise RuntimeError(f"錯誤：{node.name}() 不需要也不允許輸入任何參數")
+            # 既然沒有參數，直接呼叫內建函式（空載），不傳入任何 argument 列表
+            return self.builtins.mapping[node.name]()
         # 1. 取得參數值 (計算每一個 arg 表達式)
         arg_values = [self.evaluate(arg, scope) for arg in node.args]
 
