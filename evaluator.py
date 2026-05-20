@@ -375,6 +375,39 @@ class Evaluator:
                 if node.op =='NOT':
                     val =self.evaluate(node.operand,scope)
                     return 1 if val==0 else 0
+                if node.op in ('PRE_INC', 'PRE_DEC'):
+                    # 1. 找出運算目標的記憶體實體位址 (支援變數、陣列元素、指標解引用)
+                    target_addr = None
+                    
+                    if isinstance(node.operand, VarNode):
+                        info = scope.lookup(node.operand.name)
+                        if not info: raise NameError(f"未定義變數: {node.operand.name}")
+                        target_addr = info['address']
+                        
+                    elif isinstance(node.operand, ArrayAccessNode):
+                        info = scope.lookup(node.operand.name)
+                        if not info: raise NameError(f"未定義陣列: {node.operand.name}")
+                        if info.get('is_param') or "ptr" in str(info.get('type')):
+                            base_addr = memory.read(info['address'])
+                        else:
+                            base_addr = info['address']
+                        idx = self.evaluate(node.operand.index_node, scope)
+                        target_addr = base_addr + (int(idx) if idx is not None else 0)
+                        
+                    elif isinstance(node.operand, UnaryOpNode) and node.operand.op == 'DEREF':
+                        target_addr = self.evaluate(node.operand.operand, scope)
+                    else:
+                        raise RuntimeError("錯誤：遞增/遞減運算子必須用於左值 (L-value)")
+
+                    # 2. 讀出舊值，並根據 op 計算出新值
+                    current_val = memory.read(target_addr)
+                    current_val = current_val if current_val is not None else 0
+                    
+                    new_val = current_val + 1 if node.op == 'PRE_INC' else current_val - 1
+                    
+                    # 3. 寫回記憶體，並回傳新值 (符合前綴遞增減特性)
+                    memory.write(target_addr, int(new_val))
+                    return new_val
             if isinstance(node, IfNode):
                 if self.evaluate(node.condition, scope):
                     return self.evaluate(node.then_block, scope)

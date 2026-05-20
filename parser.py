@@ -63,7 +63,7 @@ class Parser:
             block_node = BlockNode(statements)
             return block_node
 
-        if token.type in ('ID', 'TIMES','LPAREN'):
+        if token.type in ('ID', 'TIMES','LPAREN','PRE_INC', 'PRE_DEC'):
             node = self.assign_value()
             if self.current_token() and self.current_token().type == 'END':
                 self.eat('END')
@@ -322,6 +322,12 @@ class Parser:
         if token.type == 'BIT_AND':
             self.eat('BIT_AND')
             return UnaryOpNode('ADDRESS_OF', self.factor())   
+        if token.type == 'PRE_INC': # 假設前綴 ++ 的 Token type 為 'INC'
+            self.eat('PRE_INC')
+            return UnaryOpNode('PRE_INC', self.factor())
+        if token.type == 'PRE_DEC': # 假設前綴 -- 的 Token type 為 'DEC'
+            self.eat('PRE_DEC')
+            return UnaryOpNode('PRE_DEC', self.factor())
         return self.postfix()
     # parser_35.py
     def postfix(self):

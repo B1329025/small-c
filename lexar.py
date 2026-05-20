@@ -59,6 +59,8 @@ class Lexer:
             ('NEWLINE', r'\n'),
             ('SKIP', r'[ \t\r]+'),
 
+            ('PRE_INC',r'\+\+'),
+            ('PRE_DEC',r'\-\-'),
             ('PA', r'\+='),
             ('MA' , r'-='),
             ('TA' , r'\*='),
