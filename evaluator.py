@@ -9,7 +9,6 @@ class ReturnException(Exception):
 class Evaluator:
     
     def __init__(self):
-        self.functions = {}
         self.global_scope = memory.SymbolTable(parent=None)
         self.builtins = Builtins()
         self.trace_enabled = False
@@ -45,7 +44,7 @@ class Evaluator:
                 'line_num': 0, 'is_builtin': True
             })
         # 2. 加入使用者定義函式
-        for name, node in self.functions.items():
+        for name, node in self.global_scope.get_all_functions().items():
             # 修正處：node 是物件，使用 getattr 或直接存取屬性
             params = []
             if hasattr(node, 'params'):
@@ -63,7 +62,6 @@ class Evaluator:
             })
         return func_list
     def reset_state(self):
-        self.functions = {}
         self.global_scope = memory.SymbolTable(parent=None)
         memory.reset_memory()
     def execute_top_level(self, nodes):
@@ -75,8 +73,8 @@ class Evaluator:
             if not isinstance(node, (FunctionDeclarationNode, VarDeclarationNode, ArrayDeclarationNode)):
                 self.evaluate(node, self.global_scope)
         # 2. 第二階段：如果存在 main 函式，則執行它
-        if 'main' in self.functions:
-            main_node = self.functions['main']
+        main_node = self.global_scope.lookup_function('main')
+        if main_node:
             main_scope = memory.SymbolTable(parent=self.global_scope)
             try:
                 return self.evaluate(main_node.body, main_scope)
@@ -87,7 +85,7 @@ class Evaluator:
 
     def register_global(self, node):
         if isinstance(node, FunctionDeclarationNode):
-            self.functions[node.name] = node
+            self.global_scope.define_function(node.name, node)
         elif isinstance(node, VarDeclarationNode):
             addr = memory.allocate_memory(1)
             val = self.evaluate(node.init_node, self.global_scope) if node.init_node else 0
@@ -107,9 +105,9 @@ class Evaluator:
         self.reset_state()
         for node in nodes:
             self.register_global(node)
-        if 'main' not in self.functions:
+        main_node = self.global_scope.lookup_function('main')   
+        if not main_node:
             raise RuntimeError("錯誤：未定義 main() 函式")
-        main_node = self.functions['main']
         main_scope = memory.SymbolTable(parent=self.global_scope)
         return self.evaluate(main_node.body, main_scope)
     def calculate_compound(self, current_val, rhs_val, op):
@@ -152,8 +150,8 @@ class Evaluator:
             return self.builtins.mapping[node.name](arg_values)
 
         # 3. 檢查是否為使用者定義的函式 (如 main, swap 等)
-        if node.name in self.functions:
-            func_node = self.functions[node.name]
+        func_node = scope.lookup_function(node.name)
+        if func_node:
             # 這裡要處理自定義函式的 Scope 跳轉與參數綁定
             return self.execute_user_function(func_node, arg_values)
 
