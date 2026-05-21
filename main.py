@@ -202,8 +202,8 @@ def run_interactive_interpreter():
                     for name, info in vars_info.items():
                         print(f"{name:<10} {info['type']:<10} {info['value']}")
             elif cmd == "FUNCS":
-                # 直接從 evaluator.functions 獲取已註冊的函式
-                if hasattr(evaluator, 'functions') and evaluator.functions:
+                func_list = evaluator.get_defined_functions()
+                if func_list:
                     print(f"{'Function Name':<20} {'Return Type':<15} {'Parameters'}")
                     print("-" * 65)
                     for f_name, f_node in evaluator.functions.items():

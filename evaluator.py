@@ -114,6 +114,7 @@ class Evaluator:
     def register_global(self, node):
         if isinstance(node, FunctionDeclarationNode):
             self.global_scope.define_function(node.name, node)
+            self.functions[node.name] = node
         elif isinstance(node, VarDeclarationNode):
             addr = memory.allocate_memory(1)
             val = self.evaluate(node.init_node, self.global_scope) if node.init_node else 0
@@ -267,6 +268,7 @@ class Evaluator:
             # 在 evaluator_19.py 的 evaluate 方法內
             if isinstance(node, FunctionDeclarationNode):
                 # 將函式節點儲存到 evaluator 的 functions 字典中，以函式名稱作為 Key
+                scope.define_function(node.name, node)
                 self.functions[node.name] = node
                 # 宣告函式不需要回傳任何執行結果，直接回傳 None
                 return None
