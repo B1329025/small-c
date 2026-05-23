@@ -14,6 +14,9 @@ class Evaluator:
         self.builtins = Builtins()
         self.trace_enabled = False
         self.current_scope = self.global_scope
+        self.call_depth = 0             
+        self.current_function_name = '' 
+        self.source_lines = []
     def set_trace(self, enabled):
         """開啟或關閉語句追蹤模式"""
         self.trace_enabled = enabled
@@ -105,6 +108,8 @@ class Evaluator:
         if main_node:
             main_scope = memory.SymbolTable(parent=self.global_scope)
             try:
+                self.current_function_name = 'main'
+                self.call_depth = 0
                 return self.evaluate(main_node.body, main_scope)
             except ReturnException as e:
                 return e.value
@@ -244,18 +249,31 @@ class Evaluator:
                 'is_param': True,    
                 'initialized': True 
             })
-        
+        old_func = getattr(self, 'current_function_name', '')
+        self.current_function_name = func_node.name
+        self.call_depth += 1
         try:
             return self.evaluate(func_node.body, func_scope)
         except ReturnException as e:
             return e.value
-
+        finally:
+            self.call_depth -= 1
+            self.current_function_name = old_func
     def evaluate(self,node,scope):
             if node is None:  
                 return None
-            if self.trace_enabled and hasattr(node, 'lineno'):
-                if isinstance(node, (AssignNode, FunctionCallNode, IfNode, WhileNode, ForNode, PrintNode, ReturnNode)):
-                    print(f"{{line {node.lineno}}} {type(node).__name__}")
+            if self.trace_enabled and hasattr(node, 'lineno') and node.lineno:
+                # 1. 忽略不需要印出的區塊與函式宣告節點
+                if not isinstance(node, (BlockNode, FunctionDeclarationNode, ArrayDeclarationNode)):
+                    # 2. 依右圖特例：在非 main 函式中，未初始化的變數宣告（如 int temp;）不印出
+                    if isinstance(node, VarDeclarationNode) and not node.init_node and getattr(self, 'current_function_name', '') != 'main':
+                        pass
+                    else:
+                        line_idx = node.lineno - 1
+                        if hasattr(self, 'source_lines') and 0 <= line_idx < len(self.source_lines):
+                            line_code = self.source_lines[line_idx].strip()
+                            indent = "   " * getattr(self, 'call_depth', 0)  # 每層呼叫多 3 個空格
+                            print(f"{indent}[line {node.lineno}] {line_code}")
             if isinstance(node, VarDeclarationNode):
                 addr = memory.allocate_memory(1)
                 # 計算初始值，若無則預設為 0

@@ -1,5 +1,6 @@
 from nodes import *
 import memory
+
 def process_string_escapes(s):
     """將字串中字面上的 \\n, \\t, \\0, \\" 等真正轉換為對應的控制字元"""
     result = []
@@ -21,6 +22,7 @@ def process_string_escapes(s):
             result.append(s[i])
             i += 1
     return "".join(result)
+
 class Parser:
     def set_evaluator(self, evaluator):
         self.evaluator = evaluator
@@ -31,7 +33,7 @@ class Parser:
 
     def current_token(self):
         return self.tokens[self.pos] if self.pos < len(self.tokens) else None
-    # parser_9.py
+
     def parse_program(self):
         nodes = []
         while self.current_token() and self.current_token().type != 'EOF':
@@ -59,18 +61,27 @@ class Parser:
 
     def parse_statement(self):
         token = self.current_token()
+        if not token:
+            return None
+            
+        # ✨ 關鍵修改：記錄此語句開始時的行號
+        start_line = token.line 
+        
         if token.type == 'END':
             self.eat('END')
             return None
 
         if token.type in ('INT', 'CHAR','VOID'):
-            node =self.declare_variable()
+            node = self.declare_variable()
             if not isinstance(node, FunctionDeclarationNode):
                 self.eat('END')
+            if node: node.lineno = start_line
             return node 
         
         if token.type == 'PRINTF':
-            return self.parse_printf()
+            node = self.parse_printf()
+            if node: node.lineno = start_line
+            return node
 
         if token.type == 'LBRACES':
             self.eat('LBRACES')
@@ -81,29 +92,46 @@ class Parser:
                     statements.append(stmt)
             self.eat('RBRACES')
             block_node = BlockNode(statements)
+            block_node.lineno = start_line  # 區塊引導行號
             return block_node
 
         if token.type in ('ID', 'TIMES','LPAREN','PRE_INC', 'PRE_DEC'):
             node = self.assign_value()
             if self.current_token() and self.current_token().type == 'END':
                 self.eat('END')
+            if node: node.lineno = start_line
             return node
 
         if token.type == 'IF':
-            return self.If()
+            node = self.If()
+            if node: node.lineno = start_line
+            return node
 
         if token.type == 'WHILE':
-            return self.WHILE()
+            node = self.WHILE()
+            if node: node.lineno = start_line
+            return node
 
         if token.type =='FOR':
-            return self.FOR()
-        # Parser.parse_statement 內部改為：
+            node = self.FOR()
+            if node: node.lineno = start_line
+            return node
+
         if token.type == 'BREAK':
-            return self.parse_break()
+            node = self.parse_break()
+            if node: node.lineno = start_line
+            return node
+            
         if token.type == 'CONTINUE':
-            return self.parse_continue()
+            node = self.parse_continue()
+            if node: node.lineno = start_line
+            return node
+            
         if token.type == 'RETURN':
-            return self.parse_return()
+            node = self.parse_return()
+            if node: node.lineno = start_line
+            return node
+            
         if token.type == 'DO':
             self.eat('DO')
             body = self.parse_statement()
@@ -112,18 +140,24 @@ class Parser:
             cond = self.logical_or()
             self.eat('RPAREN')
             self.eat('END') 
-            return DoWhileNode(body, cond)
+            node = DoWhileNode(body, cond)
+            node.lineno = start_line
+            return node
+            
         line = token.line if token else "Unknown"
         raise SyntaxError(f"Line {line}: 無法解析的語句開頭: {token.type}")
+
     def parse_block(self):
+        start_line = self.current_token().line if self.current_token() else None
         self.eat('LBRACES')
         statements = []
         while self.current_token() and self.current_token().type != 'RBRACES':
             stmt = self.parse_statement()
             if stmt: statements.append(stmt)
         self.eat('RBRACES')
-        return BlockNode(statements)
-    # 在 Parser 類別內新增這些方法
+        node = BlockNode(statements)
+        node.lineno = start_line
+        return node
 
     def parse_break(self):
         self.eat('BREAK')  # 消耗 'break' Token
@@ -138,19 +172,18 @@ class Parser:
     def parse_return(self):
         self.eat('RETURN')   # 消耗 'return' Token
         value_node = None
-        # 如果後面不是分號，代表有回傳值（例如 return a + 5;）
+        # 如果後面不是分號，代表有回傳值
         if self.current_token() and self.current_token().type != 'END':
             value_node = self.logical_or() 
         self.eat('END')      # 消耗 ';' Token
         return ReturnNode(value_node)
-        
 
     def declare_variable(self):
         start_line = self.current_token().line if self.current_token() else None
         token = self.eat(self.current_token().type) # 吃掉 int/char/void
         var_base_type = token.value
         
-        # 1. 處理變數名稱前的指標星號 (例如 int *a)
+        # 1. 處理變數名稱前的指標星號
         is_pointer = False
         if self.current_token() and self.current_token().type == 'TIMES':
             self.eat('TIMES')
@@ -165,7 +198,6 @@ class Parser:
             if self.current_token() and self.current_token().type in ('INT', 'CHAR', 'VOID'):
                 while True:
                     p_type = self.eat(self.current_token().type).value
-                    # 修正處：正確處理參數中的指標[cite: 11]
                     p_is_ptr = False
                     if self.current_token() and self.current_token().type == 'TIMES':
                         self.eat('TIMES')
@@ -193,25 +225,28 @@ class Parser:
             if self.current_token() and self.current_token().type == 'assign':
                 self.eat('assign')
                 init_node = self.logical_or()
-            return ArrayDeclarationNode(var_base_type, var_name, size_node, init_node)
+            node = ArrayDeclarationNode(var_base_type, var_name, size_node, init_node)
+            node.lineno = start_line  # ✨ 綁定行號
+            return node
         else:
             init_node = None
             if self.current_token() and self.current_token().type == 'assign':
                 self.eat('assign')
                 init_node = self.logical_or()
-            return VarDeclarationNode(final_type_name, var_name, init_node)
+            node = VarDeclarationNode(final_type_name, var_name, init_node)
+            node.lineno = start_line  # ✨ 綁定行號
+            return node
         
     def assign_value(self):
-        # 關鍵修正：從 factor() 開始解析左值
         left_node = self.logical_or()
         assign_ops = ['assign', 'PA', 'MA', 'TA', 'DA', 'MOD_A']
-        # 檢查後面是否有賦值符號
         if self.current_token() and self.current_token().type in assign_ops:
             op_token = self.eat(self.current_token().type)
             right_node = self.assign_value()        
             return AssignNode(left_node, op_token.type, right_node)    
         
         return left_node
+
     def parse_printf(self):
         self.eat('PRINTF')
         self.eat('LPAREN')
@@ -244,10 +279,10 @@ class Parser:
         self.eat('RPAREN')
         then_block = self.parse_statement()
         return WhileNode(condition, then_block)
+
     def FOR(self):
         self.eat('FOR')
         self.eat('LPAREN')
-        # 1. 初始化部分
         if self.current_token().type in ('INT', 'CHAR'):
             init = self.declare_variable() 
         else:
@@ -260,6 +295,7 @@ class Parser:
         
         body = self.parse_statement()
         return ForNode(init, cond, upd, body)
+
     def logical_or(self):
         node = self.logical_and()
         while self.current_token() and self.current_token().type == 'LOGICAL_OR':
@@ -275,6 +311,7 @@ class Parser:
             right_node = self.bit_or()
             node = BinOpNode(node, op, right_node)
         return node
+
     def bit_or(self):
         node=self.bit_xor()
         while self.current_token() and self.current_token().type =='OR':
@@ -282,6 +319,7 @@ class Parser:
             right_node=self.bit_xor()
             node=BinOpNode(node,op,right_node)
         return node
+
     def bit_xor(self):
         node=self.bit_and()
         while self.current_token() and self.current_token().type =='XOR':
@@ -289,6 +327,7 @@ class Parser:
             right_node=self.bit_and()
             node=BinOpNode(node,op,right_node)
         return node
+
     def bit_and(self):
         node = self.comparison() 
         while self.current_token() and self.current_token().type == 'BIT_AND':
@@ -296,6 +335,7 @@ class Parser:
             right_node = self.comparison()
             node = BinOpNode(node, op, right_node)
         return node
+
     def comparison(self):
         node = self.shift()
         while self.current_token() and self.current_token().type in ('LE', 'GE', 'E', 'NE', 'G', 'L'):
@@ -303,6 +343,7 @@ class Parser:
             right_node = self.shift()
             node = BinOpNode(node, op, right_node)
         return node
+
     def shift(self):
         node =self.expression()
         while self.current_token() and self.current_token().type in ('ls', 'rs'):
@@ -310,6 +351,7 @@ class Parser:
             right_node = self.expression()
             node = BinOpNode(node, op, right_node)
         return node
+
     def expression(self):
         node = self.term()
         while self.current_token() and self.current_token().type in ('PLUS', 'MINUS'):
@@ -317,6 +359,7 @@ class Parser:
             right_node = self.term()
             node = BinOpNode(node, op, right_node)
         return node
+
     def term(self):
         node = self.factor()
         while self.current_token() and self.current_token().type in ('TIMES', 'DIVIDE','MOD'):
@@ -341,33 +384,26 @@ class Parser:
             return UnaryOpNode('DEREF', self.factor())
         if token.type == 'BIT_AND':
             self.eat('BIT_AND')
-            return UnaryOpNode('ADDRESS_OF', self.factor())   
-        if token.type == 'PRE_INC': # 假設前綴 ++ 的 Token type 為 'INC'
+            return UnaryOpNode('ADDRESS_OF', self.factor()) 
+        if token.type == 'PRE_INC':
             self.eat('PRE_INC')
             return UnaryOpNode('PRE_INC', self.factor())
-        if token.type == 'PRE_DEC': # 假設前綴 -- 的 Token type 為 'DEC'
+        if token.type == 'PRE_DEC':
             self.eat('PRE_DEC')
             return UnaryOpNode('PRE_DEC', self.factor())
         return self.postfix()
-    # parser_35.py
+
     def postfix(self):
         node = self.primary()
         while self.current_token() and self.current_token().type == 'LBRACKET':
-            if not isinstance(node, VarNode):
-                # 這裡很重要：如果 node 已經是 ArrayAccessNode，也要能繼續存取（多維陣列支援）
-                # 如果目前只支援一維，請確保傳給 ArrayAccessNode 的是字串
-                pass
-                
             var_name = node.name if isinstance(node, VarNode) else node.name
             self.eat('LBRACKET')
             index_node = self.logical_or()
             self.eat('RBRACKET')
-            
-            # 建立節點
             node = ArrayAccessNode(var_name, index_node)
         return node
+
     def primary(self):
-        """最基礎的原子單元，新增對函式呼叫的支援"""
         token = self.current_token()  
         
         if token.type == 'NUMBER':
@@ -379,44 +415,32 @@ class Parser:
             
         if token.type == 'CHAR':
             token_val = self.eat('CHAR').value
-            content = token_val[1:-1]  # 去掉前後的單引號
+            content = token_val[1:-1]
             
-            # 檢查是否為跳脫序列 (以反斜線開頭且長度至少為 2)
             if content.startswith('\\') and len(content) >= 2:
                 escape_char = content[1]
                 escape_map = {
-                    'n': 10,   # 換行 (\n)
-                    't': 9,    # 水平定位 (\t)
-                    '0': 0,    # 空字元 (\0)
-                    '\\': 92,  # 反斜線 (\\)
-                    "'": 39,   # 單引號 (\')
-                    '"': 34    # 雙引號 (\")
+                    'n': 10, 't': 9, '0': 0, '\\': 92, "'": 39, '"': 34
                 }
-                # 如果在對照表中就轉換，否則退回原本字元的 ASCII (例如未知跳脫 \x)
                 val = escape_map.get(escape_char, ord(escape_char))
             else:
-                # 一般字元直接轉 ASCII
                 val = ord(content) if len(content) > 0 else 0
                 
             return NumberNode(val)
             
         if token.type == 'ID':
             name = self.eat('ID').value
-            # --- 關鍵修正：檢查 ID 後面是否接著左括號 ( ---
             if self.current_token() and self.current_token().type == 'LPAREN':
                 self.eat('LPAREN')
                 args = []
-                # 解析參數列表
                 if self.current_token().type != 'RPAREN':
                     args.append(self.logical_or())
                     while self.current_token().type == 'COMMA':
                         self.eat('COMMA')
                         args.append(self.logical_or())
                 self.eat('RPAREN')
-                # 回傳 FunctionCallNode (你在 nodes.py 中已定義此類別)
                 return FunctionCallNode(name, args)
             
-            # 如果後面沒有括號，才當作一般變數
             return VarNode(name)          
             
         if token.type == 'LPAREN':

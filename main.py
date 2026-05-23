@@ -176,7 +176,9 @@ def run_interactive_interpreter():
                 evaluator.reset_state() 
                 
                 try:
-                    execute_ast("\n".join(user_code_buffer), evaluator) 
+                    ret_val = execute_ast("\n".join(user_code_buffer), evaluator) 
+                    if ret_val is not None:
+                        print(f"Program exited with return value {ret_val}.") 
                 except Exception as e:
                     print(f"Runtime Error: {e}")
 
@@ -191,11 +193,13 @@ def run_interactive_interpreter():
                 print("114-2")
             elif cmd == "TRACE":
                 if len(parts) > 1 and parts[1].upper() == "ON":
-                    trace_mode = True
+                    evaluator.set_trace(True)
                     print("Trace mode enabled.")
-                else:
-                    trace_mode = False
+                elif len(parts) > 1 and parts[1].upper() == "OFF":
+                    evaluator.set_trace(False)
                     print("Trace mode disabled.")
+                else:
+                    print("Usage: TRACE <ON|OFF>")
 
             elif cmd == "VARS":
                 vars_info = evaluator.get_global_variables()
@@ -271,6 +275,7 @@ def run_interactive_interpreter():
 
 def execute_ast(code, evaluator, trace=False):
     if not code.strip(): return
+    evaluator.source_lines = code.splitlines()
     lexer = Lexer(code)
     parser = Parser(lexer.tokens)
     ast_nodes = parser.parse_program()
