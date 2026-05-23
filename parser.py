@@ -1,6 +1,26 @@
 from nodes import *
 import memory
-
+def process_string_escapes(s):
+    """將字串中字面上的 \\n, \\t, \\0, \\" 等真正轉換為對應的控制字元"""
+    result = []
+    i = 0
+    while i < len(s):
+        # 當看到反斜線，且後面還有字元時，進行跳脫處理
+        if s[i] == '\\' and i + 1 < len(s):
+            ch = s[i+1]
+            if ch == 'n':    result.append('\n')   # 換行
+            elif ch == 't':  result.append('\t')   # Tab 縮排
+            elif ch == '0':  result.append('\0')   # 空字元
+            elif ch == '\\': result.append('\\')   # 反斜線本身
+            elif ch == '"':  result.append('"')    # 雙引號 (解決 \" 的問題)
+            elif ch == "'":  result.append("'")    # 單引號
+            else:
+                result.append(ch) # 如果是未知的跳脫，就直接保留該字元
+            i += 2  # 跳過反斜線與被跳脫的字元
+        else:
+            result.append(s[i])
+            i += 1
+    return "".join(result)
 class Parser:
     def set_evaluator(self, evaluator):
         self.evaluator = evaluator
@@ -196,7 +216,7 @@ class Parser:
         self.eat('PRINTF')
         self.eat('LPAREN')
         format_token = self.eat('STRING')
-        format_str = format_token.value[1:-1]
+        format_str = process_string_escapes(format_token.value[1:-1])
         args = []
         while self.current_token() and self.current_token().type == 'COMMA':
             self.eat('COMMA')
@@ -354,11 +374,30 @@ class Parser:
             return NumberNode(int(self.eat('NUMBER').value))           
         
         if token.type == 'STRING':
-            return StringNode(self.eat('STRING').value[1:-1])
+            raw_str = self.eat('STRING').value[1:-1]
+            return StringNode(process_string_escapes(raw_str))
             
         if token.type == 'CHAR':
-            # 將 'A' 轉為 ASCII 碼
-            val = ord(self.eat('CHAR').value[1])
+            token_val = self.eat('CHAR').value
+            content = token_val[1:-1]  # 去掉前後的單引號
+            
+            # 檢查是否為跳脫序列 (以反斜線開頭且長度至少為 2)
+            if content.startswith('\\') and len(content) >= 2:
+                escape_char = content[1]
+                escape_map = {
+                    'n': 10,   # 換行 (\n)
+                    't': 9,    # 水平定位 (\t)
+                    '0': 0,    # 空字元 (\0)
+                    '\\': 92,  # 反斜線 (\\)
+                    "'": 39,   # 單引號 (\')
+                    '"': 34    # 雙引號 (\")
+                }
+                # 如果在對照表中就轉換，否則退回原本字元的 ASCII (例如未知跳脫 \x)
+                val = escape_map.get(escape_char, ord(escape_char))
+            else:
+                # 一般字元直接轉 ASCII
+                val = ord(content) if len(content) > 0 else 0
+                
             return NumberNode(val)
             
         if token.type == 'ID':

@@ -55,7 +55,8 @@ def run_interactive_interpreter():
         "FUNCS": "FUNCS: 列出所有已定義的函式。",
         "CLEAR": "CLEAR: 清除終端機畫面。",
         "HELP": "HELP [command]: 顯示指令摘要或特定指令的詳細說明。",
-        "EXIT": "EXIT 或 QUIT: 結束解譯器環境。"
+        "EXIT": "EXIT 或 QUIT: 結束解譯器環境。",
+        "ABOUT": "組員資料"
     }
 
     print("Small-C Interactive Interpreter v3.0")
@@ -184,7 +185,10 @@ def run_interactive_interpreter():
                 if not errors: print("No errors found.")
                 else:
                     for err in errors: print(f"Line {err['line']}: {err['msg']}")
-
+            elif cmd =="ABOUT":
+                print("small_c_ver_6.7.0")
+                print("author:彭文璨、陳恩立、謝熙睿")
+                print("114-2")
             elif cmd == "TRACE":
                 if len(parts) > 1 and parts[1].upper() == "ON":
                     trace_mode = True
