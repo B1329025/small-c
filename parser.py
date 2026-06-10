@@ -216,7 +216,13 @@ class Parser:
         if self.current_token() and self.current_token().type == 'LPAREN':
             self.eat('LPAREN')
             params = []
-            if self.current_token() and self.current_token().type in ('INT', 'CHAR', 'VOID'):
+            if self.current_token() and self.current_token().type == 'VOID':
+                self.eat('VOID')
+                if self.current_token() and self.current_token().type != 'RPAREN':
+                    raise SyntaxError(
+                        f"Line {self.error_line()}: 語法錯誤：void 參數列表不能再宣告其他參數"
+                    )
+            elif self.current_token() and self.current_token().type in ('INT', 'CHAR'):
                 while True:
                     p_type = self.eat(self.current_token().type).value
                     p_is_ptr = False

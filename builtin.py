@@ -61,7 +61,7 @@ class Builtins:
                 val = user_input[i]
                 target_addr = args[i + 1]
                 # 判斷是數字還是字元
-                if val.isdigit():
+                if self._is_int_literal(val):
                     memory.write(target_addr, int(val))
                 else:
                     memory.write(target_addr, ord(val[0]))
@@ -174,6 +174,14 @@ class Builtins:
             chars.append(chr(c))
             addr += 1
         return "".join(chars)
+
+    def _is_int_literal(self, value):
+        if not value:
+            return False
+        if value[0] in '+-' and len(value) > 1:
+            return value[1:].isdigit()
+        return value.isdigit()
+
     def printf(self,fmt,arg_values):
         result = ""
         arg_idx = 0

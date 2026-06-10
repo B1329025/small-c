@@ -93,6 +93,7 @@ class Evaluator:
 
         return func_list
     def reset_state(self):
+        self.functions = {}
         self.global_scope = memory.SymbolTable(parent=None)
         memory.reset_memory()
     def execute_top_level(self, nodes):
@@ -225,6 +226,13 @@ class Evaluator:
     def execute_user_function(self, func_node, arg_values):
         # 建立函式的獨立作用域 (parent 設為 global_scope 符合 C 規範)
         func_scope = memory.SymbolTable(parent=self.global_scope)
+
+        expected_args = len(func_node.params)
+        actual_args = len(arg_values)
+        if actual_args != expected_args:
+            raise RuntimeError(
+                f"Runtime Error: Function '{func_node.name}' expects {expected_args} argument(s), got {actual_args}"
+            )
         
         for i, param_data in enumerate(func_node.params):
             val = arg_values[i]  # 這裡可能是數值 (int) 或位址 (指向陣列)
