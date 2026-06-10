@@ -13,7 +13,8 @@ class Lexer:
     def __init__(self, code):
         # 這裡呼叫你原本的處理邏輯
         self.tokens = self.token_map(self.preprocess(code))
-        self.tokens.append(Token('EOF', None, -1)) # 加入結束標記
+        last_line = self.tokens[-1].line if self.tokens else 1
+        self.tokens.append(Token('EOF', None, last_line)) # 加入結束標記
 
     def __iter__(self):
         return iter(self.tokens)

@@ -52,12 +52,23 @@ class Parser:
 
     def eat(self, token_type):
         token = self.current_token()
+
         if token and token.type == token_type:
             self.pos += 1
             return token
-        
-        line = token.line if token else "EOF"
-        raise SyntaxError(f"Line {line}: 語法錯誤：預期 {token_type}，但得到 {token}")
+
+        # ===== 修正錯誤行號 =====
+        if token and token.type == 'EOF':
+            if self.pos > 0:
+                line = self.tokens[self.pos - 1].line
+            else:
+                line = 1
+        else:
+            line = token.line if token else 1
+
+        raise SyntaxError(
+            f"Line {line}: 語法錯誤：預期 {token_type}，但得到 {token}"
+        )
 
     def parse_statement(self):
         token = self.current_token()
