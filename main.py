@@ -189,7 +189,7 @@ def run_interactive_interpreter():
                     for err in errors: print(f"Line {err['line']}: {err['msg']}")
             elif cmd =="ABOUT":
                 print("small_c_ver_6.7.0")
-                print("author:彭文璨、陳恩立、謝熙睿")
+                print("author:B1344048彭文璨、B1329017陳恩立、B1329025謝熙睿")
                 print("114-2")
             elif cmd == "TRACE":
                 if len(parts) > 1 and parts[1].upper() == "ON":
