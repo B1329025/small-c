@@ -45,8 +45,14 @@ class Evaluator:
 
         # 1. 加入內建函式
         for name in self.builtins.mapping:
+            if name in ('sizeof_int', 'sizeof_char'):
+                params = []
+            else:
+                params = [{'type': '...', 'name': '...'}]
             func_list.append({
-                'name': name, 'type': 'int', 'params': [{'type': '...', 'name': '...'}],
+                'name': name,
+                'type': 'int',
+                'params': params,
                 'line_num': 0, 'is_builtin': True
             })
             seen_functions.add(name)
@@ -59,12 +65,19 @@ class Evaluator:
             params = []
             if hasattr(node, 'params'):
                 for p in node.params:
-                    p_name = p['name'] if isinstance(p, dict) else getattr(p, 'var_name', str(p))
-                    params.append({'type': 'int', 'name': p_name})
+                    if isinstance(p, dict):
+                        p_type = p.get('type', 'int')
+                        p_name = p.get('name', '')
+                        p_is_ptr = p.get('is_ptr', False)
+                    else:
+                        p_type = getattr(p, 'var_type', 'int')
+                        p_name = getattr(p, 'var_name', str(p))
+                        p_is_ptr = False
+                    params.append({'type': p_type, 'name': p_name, 'is_ptr': p_is_ptr})
 
             func_list.append({
                 'name': name,
-                'type': 'int', 
+                'type': getattr(node, 'return_type', 'int'),
                 'params': params,
                 'line_num': getattr(node, 'lineno', "??"),
                 'is_builtin': False
@@ -79,12 +92,19 @@ class Evaluator:
             params = []
             if hasattr(node, 'params'):
                 for p in node.params:
-                    p_name = p['name'] if isinstance(p, dict) else getattr(p, 'var_name', str(p))
-                    params.append({'type': 'int', 'name': p_name})
+                    if isinstance(p, dict):
+                        p_type = p.get('type', 'int')
+                        p_name = p.get('name', '')
+                        p_is_ptr = p.get('is_ptr', False)
+                    else:
+                        p_type = getattr(p, 'var_type', 'int')
+                        p_name = getattr(p, 'var_name', str(p))
+                        p_is_ptr = False
+                    params.append({'type': p_type, 'name': p_name, 'is_ptr': p_is_ptr})
 
             func_list.append({
                 'name': name,
-                'type': 'int', 
+                'type': getattr(node, 'return_type', 'int'),
                 'params': params,
                 'line_num': getattr(node, 'lineno', "??"),
                 'is_builtin': False

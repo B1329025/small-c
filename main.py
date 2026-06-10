@@ -212,27 +212,26 @@ def run_interactive_interpreter():
             elif cmd == "FUNCS":
                 func_list = evaluator.get_defined_functions()
                 if func_list:
-                    print(f"{'Function Name':<20} {'Return Type':<15} {'Parameters'}")
-                    print("-" * 65)
-                    for f_name, f_node in evaluator.functions.items():
-                        # 根據 Parser[cite: 6] 的定義，params 是一個字典列表
+                    print(f"{'Function Name':<20} {'Return Type':<12} {'Parameters':<28} {'Line':<6} {'Kind'}")
+                    print("-" * 85)
+                    for func in func_list:
                         param_strs = []
-                        if hasattr(f_node, 'params') and f_node.params:
-                            for p in f_node.params:
-                                # 從字典中提取資訊[cite: 6]
-                                p_type = p.get('type', 'int')
-                                p_name = p.get('name', '')
-                                p_is_ptr = p.get('is_ptr', False)
-                                
-                                # 組合顯示字串 (例如 int *arr)
-                                ptr_str = "*" if p_is_ptr else ""
+                        for p in func.get('params', []):
+                            p_type = p.get('type', 'int')
+                            p_name = p.get('name', '')
+                            p_is_ptr = p.get('is_ptr', False)
+                            ptr_str = "*" if p_is_ptr else ""
+                            if p_name:
                                 param_strs.append(f"{p_type} {ptr_str}{p_name}")
-                        
+                            else:
+                                param_strs.append(f"{p_type} {ptr_str}".rstrip())
+
                         params_display = f"({', '.join(param_strs)})"
-                        
-                        # 取得回傳型別，若無則預設為 int[cite: 6]
-                        ret_type = getattr(f_node, 'return_type', 'int')
-                        print(f"{f_name:<20} {ret_type:<15} {params_display}")
+                        line_display = "[built-in]" if func.get('is_builtin') else str(func.get('line_num', '??'))
+                        kind_display = "built-in" if func.get('is_builtin') else "user-defined"
+                        print(
+                            f"{func['name']:<20} {func['type']:<12} {params_display:<28} {line_display:<6} {kind_display}"
+                        )
                 else:
                     print("No functions defined. (Try running the code first)")
             # --- 3.3 系統指令 (實作區) ---
