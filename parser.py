@@ -33,7 +33,25 @@ class Parser:
 
     def current_token(self):
         return self.tokens[self.pos] if self.pos < len(self.tokens) else None
+    def error_line(self):
+        token = self.current_token()
 
+        # EOF
+        if token and token.type == 'EOF':
+            if self.pos > 0:
+                return self.tokens[self.pos - 1].line
+            return 1
+
+        # 缺 ; 的情況
+        if self.pos > 0:
+            prev_line = self.tokens[self.pos - 1].line
+
+            # 若目前 token 已經跳到下一行，
+            # 錯誤應該屬於上一行
+            if token and token.line > prev_line:
+                return prev_line
+
+        return token.line if token else 1
     def parse_program(self):
         nodes = []
         while self.current_token() and self.current_token().type != 'EOF':
@@ -57,17 +75,9 @@ class Parser:
             self.pos += 1
             return token
 
-        # ===== 修正錯誤行號 =====
-        if token and token.type == 'EOF':
-            if self.pos > 0:
-                line = self.tokens[self.pos - 1].line
-            else:
-                line = 1
-        else:
-            line = token.line if token else 1
-
         raise SyntaxError(
-            f"Line {line}: 語法錯誤：預期 {token_type}，但得到 {token}"
+            f"Line {self.error_line()}: "
+            f"語法錯誤：預期 {token_type}，但得到 {token}"
         )
 
     def parse_statement(self):
